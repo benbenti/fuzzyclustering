@@ -1,44 +1,24 @@
 """
-This module implements a fuzzy c-means (FCM) classification algorithm.
+This module implements several version of the fuzzy c-means (FCM)
+classification algorithm.
 -----------------------------------------------------------------------
-The FCM performs a soft classification. Instead of being assigned to a
-single category, each sample is given a membership score (akin to a
-probability of belonging) to every category.
-The algorithm iteratively uses the membership scores to update the
-position of the cluster centroids, and the position of the cluster
-centroids to update the membership scores.
+The FCM defines a number of clusters, and gives each sample a
+membership score to each cluster (akin to a probability of belonging).
+Clusters are initiated randomly, then the algorithm iteratively uses
+membership scores to update the position of cluster centroids, and the
+position of cluster centroids to update membership scores.
 
-The classical FCM [1] is known to be sensitive to high dimensionality
-[2]. We implemented two modifications of the algorithm to improve the
-classification: the polynomial fuzzifier function [3] and membership
-regularisation [3] using either Shannon entropy or quadratic entropy.
+This module implements four versions of the FCM algorithm:
+- the classical algorithm
+- the algorithm with a polynomial fuzzifier function
+- the algorithm with Shannon entropy-based membership regularisation
+- the algorithm with quadratic entropy-based membership regularisation.
 
-Ths module provides three ways to assess clustering quality:
-- using the objective function of the FCM, which mostly takes into
-account the compactness of the clusters.
-- using the VIdso index [4] which combines cluster dispersion,
-separation, and overlap.
-- using the generalised intra-inter silhouette [5].
-
-References:
-[1] Bezdek JC, Ehrlich R, Full W (1981) FCM: the fuzzy c-means
-    algorithm. Computer & Geosciences 10(2-3):191-203
-    DOI:10.1016/0098-3004(84)90020-7
-[2] Winkler R, Klawonn R, Kruse R (2010) Fuzzy c-means in high-
-    dimensional spaces. International Journal of Fuzzy System
-    Applications
-    DOI:10.4018/ijfsa.2011010101
-[3] Borgelt C (2013) Objective functions for fuzzy clustering. In
-    Computational intelligence and intelligent data analysis, pp 3-16
-    DOI:10.1007/978-3-642-32378-2_1
-[4] Bharill N, Tiwari A (2014) Enhanced cluster validity index for the
-    evaluation of optimal number of clusters for fuzzy c-means
-    algorithm. IEEE international conference on fuzzy systems.
-    DOI:10.1109/FUZZ-IEEE.2014.6891591
-[5] Rawashdeh M, Ralescu A (2012) Crisp and fuzzy cluster validity:
-    generalised intra-inter silhouette. Annual meeting of the north
-    American fuzzy information processing society.
-    DOI:10.1109/NAFIPS.2012.6290969
+Ths module propose three methods to evaluate clustering quality:
+- the objective function of the FCM (cluster compactness)
+- the VIdso index (cluster dispersion, separation, and overlap)
+- the generalised intra-inter silhouette (cluster compactness and
+    separation, computationally expensive).
 -----------------------------------------------------------------------
 CLASSES
 -------
@@ -49,8 +29,9 @@ FuzzyClusteringRegulQuad
 -----------------------------------------------------------------------
 FUNCTIONS
 ---------
-full_classification
-quality_compare
+classification
+compare_quality
+full_process
 euclidian_distance
 """
 
@@ -61,7 +42,7 @@ import itertools
 
 class FuzzyClustering():
     """
-    FuzzyClustering(dataset, param, nc)
+    FuzzyClustering(dataset, p, nc)
 
     A FuzzyClustering object summarises a fuzzy c-means classification.
     It stores the dataset, performs the basic steps of the algorithm,
@@ -75,10 +56,14 @@ class FuzzyClustering():
     ----------
     dataset (2d array)
         The dataset to classify. Samples in row, features in columns.
-    param (float)
-        Value of the fuzzifier.
+    p (float)
+        Value of the fuzzifier parameter.
     nc (integer)
         Number of clusters.
+
+    Notes
+    -----
+    The fuzzifier parameter should be larger than 1.
 
     Attributes
     ----------
@@ -87,7 +72,7 @@ class FuzzyClustering():
     n_samples (integer)
         Number of samples in the dataset.
     fuzzifier (float)
-        Value of the fuzzifier.
+        Value of the fuzzifier parameter.
     clusters (list of 2d arrays)
         Successive positions of the cluster centroids in the feature
         space. For each element of the list, cluster centroids in rows,
@@ -96,7 +81,7 @@ class FuzzyClustering():
         Number of clusters
     memberships (2d array)
         Membership scores. Samples in rows, clusters in columns.
-    obj_function (list of floats)
+    objective_function (list of floats)
         Successive values of the objective function.
     cluster_quality (float or list of floats)
         Quality index for the final clustering solution. Single value
@@ -131,11 +116,25 @@ class FuzzyClustering():
     intrainter_silhouette
         Computes the generalised intra-inter silhouette.
     """
+    min_fuzzifier = 1
+    max_fuzzifier = np.inf
 
-    def __init__(self, dataset, param, nc):
+    def __init__(self, dataset, p, nc):
+        """
+        Creates a new FuzzyClustering instance.
+
+        Parameters
+        ----------
+        dataset (2d array)
+            Dataset to classify. Samples in rows, features in columns.
+        p (float)
+            Value of the fuzzifier parameter.
+        nc (integer)
+            Number of clusters.
+        """
         self.data = dataset
         self.n_samples = self.data.shape[0]
-        self.fuzzifier = param
+        self.fuzzifier = p
         self.n_clusters = nc
         self.clusters = []
         self.memberships = None
@@ -147,7 +146,7 @@ class FuzzyClustering():
     def _f(self):
         """
         Membership score modification function (fuzzification function)
-        used to evaluae the objective function and updates the position
+        used to evaluate the objective function and update the position
         of cluster centroids.
         """
         return np.power(self.memberships, self.fuzzifier)
@@ -305,7 +304,7 @@ class FuzzyClustering():
         mb = self.memberships
         a = np.zeros(shape=(self.n_samples,))
         b = np.zeros(shape=(self.n_samples,))
-
+        # Measure the silhouette of each sample.
         for i in range(self.n_samples):
             dist = [euclidian_distance(self.data[i], self.data[j])
                     for j in range(self.n_samples)
@@ -339,7 +338,7 @@ class FuzzyClustering():
 
 class FuzzyClusteringPoly(FuzzyClustering):
     """
-    FuzzyClusteringPoly(dataset, param, nc)
+    FuzzyClusteringPoly(dataset, p, nc)
 
     A FuzzyClusteringPoly object summarises a fuzzy c-means
     classification, with polynomial fuzzifer function.
@@ -350,15 +349,14 @@ class FuzzyClusteringPoly(FuzzyClustering):
     Notes
     -----
     The polynomial fuzzifier function creates an area of crisp
-    clustering around cluster centroids. Data points close to each
-    cluster centroids are trapped, resulting in 'vanishing' scores
-    (scores which mathematically tend to 0)
+    clustering around cluster centroids.
+    The fuzzifier parameter must be between 0 and 1.
 
     Parameters
     ----------
     dataset (2d array)
         The dataset to classify. Samples in row, features in columns.
-    param (float)
+    p (float)
         Value of the fuzzifier.
     nc (integer)
         Number of clusters.
@@ -377,7 +375,8 @@ class FuzzyClusteringPoly(FuzzyClustering):
         Calculates the membership scores from the distances between
         data points and cluster centroids, and fuzzifier value.
     """
-
+    min_fuzzifier = 0
+    max_fuzzifier = 1
 
     def _f(self):
         """
@@ -397,8 +396,9 @@ class FuzzyClusteringPoly(FuzzyClustering):
 
         Notes
         -----
-        The polynomial fuzzifier function creates vanishing membership
-        scores, that need to be accounted for.
+        The polynomial fuzzifier function creates areas of crisp
+        clustering around cluster centroids. Some membership scores may
+        tend to 0 as a result. They need to be accounted for.
         """
         ct = self.clusters[-1]
         p = self.fuzzifier
@@ -418,7 +418,7 @@ class FuzzyClusteringPoly(FuzzyClustering):
                     ]
             comps = [a - b for a, b in zip(vals, refs)]
             lst = [idx for idx, val in enumerate(comps) if val > 0]
-            c_i = max(lst)  # Most distant cluster with non-vanishing score.
+            ct_i = max(lst)  # Most distant cluster with non-vanishing score.
             # Get membership scores.
             mb_prime = d[i] ** (-2) - refs[ct_i]
             null_idx = [k for k in range(self.n_clusters)
@@ -437,7 +437,7 @@ class FuzzyClusteringPoly(FuzzyClustering):
 
 class FuzzyClusteringRegulSh(FuzzyClustering):
     """
-    FuzzyClusteringRegulSh(dataset, param, nc)
+    FuzzyClusteringRegulSh(dataset, p, nc)
 
     A FuzzyClusteringRegulSh object summarises a fuzzy c-means
     classification, with membership regularisation based on Shannon
@@ -452,12 +452,13 @@ class FuzzyClusteringRegulSh(FuzzyClustering):
     membership regularisation adds an entropy term to the objective
     function to draw the partition away from crisp clustering.
     Shannon entropy always results in a graded clustering.
+    The fuzzifier parameter must be larger than 0.
 
     Parameters
     ----------
     dataset (2d array)
         The dataset to classify. Samples in row, features in columns.
-    param (float)
+    p (float)
         Value of the fuzzifier.
     nc (integer)
         Number of clusters.
@@ -478,6 +479,7 @@ class FuzzyClusteringRegulSh(FuzzyClustering):
         Calculates the membership scores from the distances between
         data points and cluster centroids, and fuzzifier value.
     """
+    min_fuzzifier = 0
 
     def _f(self):
         """
@@ -491,7 +493,9 @@ class FuzzyClusteringRegulSh(FuzzyClustering):
         """
         Entropy term used to evaluate the objective function.
         """
-        return - self.fuzzifier * self.memberships * np.log(self.memberships)
+        # Shannon entropy always result in graded partitions.
+        # The entropy term gives nans if a membership score equals 0.
+        return self.fuzzifier * self.memberships * np.log(self.memberships)
 
     def calculate_memberships(self):
         """
@@ -525,7 +529,7 @@ class FuzzyClusteringRegulSh(FuzzyClustering):
 
 class FuzzyClusteringRegulQuad(FuzzyClustering):
     """
-    FuzzyClusteringRegulQuad(dataset, param, nc)
+    FuzzyClusteringRegulQuad(dataset, p, nc)
 
     A FuzzyClusteringRegulQuad object summarises a fuzzy c-means
     classification, with membership regularisation based on quadratic
@@ -536,13 +540,14 @@ class FuzzyClusteringRegulQuad(FuzzyClustering):
 
     Notes
     -----
-    The quadratic entropy may create 'vanishing' membership scores.
+    The quadratic entropy FCM may create null membership scores.
+    The fuzzifier parameter must be larger than 0.
 
     Parameters
     ----------
     dataset (2d array)
         The dataset to classify. Samples in row, features in columns.
-    param (float)
+    p (float)
         Value of the fuzzifier.
     nc (integer)
         Number of clusters.
@@ -563,6 +568,7 @@ class FuzzyClusteringRegulQuad(FuzzyClustering):
         Calculates the membership scores from the distances between
         data points and cluster centroids, and fuzzifier value.
     """
+    min_fuzzifier = 0
 
     def _f(self):
         """
@@ -626,77 +632,70 @@ class FuzzyClusteringRegulQuad(FuzzyClustering):
         self.memberships = mb
 
 
-def full_classification(dataset, algo, step, nc_max,
-                        itermax, err, q_method, seed=None
-                        ):
+def classification(dataset, p, nc, algo,
+                   itermax, err, err_bis=None, seed=None):
     """
-    Runs the full classification procedure using the fuzzy c-means
-    algorithm. Fits a fuzzy clustering solution for every fuzzifier
-    value in param_range (in step increments) and for 2, ..., nc_max
-    clusters.
-    At each step, makes 100 realisations and keeps the solution with
-    the best clustering quality.
+    Runs the fuzzy c-means algorithm for a pair of fuzzifier value and
+    number of clusters. Makes 100 realisations of the algorithms with
+    random initialisations.
 
     Parameters
     ----------
     dataset (2d array)
         The dataset to classify. Samples in rows, features in columns.
+    p (float)
+        Value of the fuzzifier. Should be within the interval of valid
+        values depending on the FCM version.
+    nc (integer)
+        Number of clusters.
     algo (class)
         The version of the fuzzy c-means algorithm to use.
         FuzzyClustering, FuzzyClusteringPoly, FuzzyClusteringRegulSh,
         or FuzzyClusteringRegulQuad.
-    step (float)
-        Size of the increments to cover the range of fuzzifier values.
-    nc_max (integer)
-        Maximum number of clusters allowed.
     itermax (integer)
         Maximum number of iterations to reach convergence.
     err (float)
-        Minimum improvement of objective function to continue the
+        Minimum improvement of the objective function to continue the
         iterations.
-    q_method (class method):
-        The clustering quality index to use. Should be the
-        evaluate_objective_function, VIdso, or interintra_silhouette
-        method of the algo class.
+    err_bis (float)
+        Minimum difference in consecutive cluster centroid positions to
+        continue the iteration.
+        Default is None. If given, overrides err
     seed (integer, float, byte, or bytearray)
         Seed of the random number generator used to initiate random
         clusters.
     Returns
     -------
-    clustering_solution (dict)
-        A dictionary of dictionaries storing the clustering solutions.
-        Primary keys are the values of the fuzzifier.
-        Secondary keys are the numbers of clusters.
-        The items of the secondary dictionaries are the FuzzyClustering
-        instances corresponding to the fuzzifier value and number of
-        clusters.
+    FC_list (list)
+        A 100-element list containing the final states of the FCM
+        realisations.
     """
-    fuzz_range = algo.param_range
-    clustering_solution = {}
-    for p in np.arange(fuzz_range[0], fuzz_range[1], step):
-        clustering_solution[round(p, 2)] = {}
-        for k in range(2, nc_max+1):
-            results = [None]*100
-            for n in range(100):
-                FC = algo(dataset, p, k)
-                FC.initiate_clusters(seed)
-                FC.calculate_memberships()
-                stopiter = err + 1
-                n_loops = 0
-                while stopiter >= err and n_loops <= itermax:
-                    FC.update_clusters()
-                    FC.calculate_memberships()
-                    FC.evaluate_objective_function()
-                    stopiter = FC.obj_func[-1] - FC.obj_func[-2]
-                    n_loops += 1
-                q_method(FC)
-                results[n] = FC
-            srtd = quality_compare(results)
-            clustering_solution[p][k] = results[srtd[0]]
-    return clustering_solution
+    if p < algo.min_fuzzifier or p > algo.max_fuzzifier:
+        raise ValueError('Fuzzifier values must be within [{},{}]'.format(algo.min_fuzzifier, algo.max_fuzzifier))
+    FC_list = [None] * 100
+    for n in range(100):
+        FC = algo(dataset, p, nc)
+        FC.initiate_clusters(seed)
+        FC.calculate_memberships()
+        FC.evaluate_objective_function()
+        if err_bis:
+            err = err_bis
+        stopiter = err + 1
+        n_loops = 0
+        while stopiter >= err and n_loops <= itermax:
+            FC.update_clusters()
+            FC.calculate_memberships()
+            FC.evaluate_objective_function()
+            if not err_bis:
+                stopiter = FC.obj_function[-1] - FC.obj_function[-2]
+            else:
+                stopiter = np.min(FC.clusters[-1] - FC.clusters[-2])
+            n_loops += 1
+        FC_list[n] = FC
+    return FC_list
 
 
-def quality_compare(lst):
+def compare_quality(lst, q_method=None):
     """
     Compare the clustering quality of several fuzzy clustering
     solutions.
@@ -706,6 +705,10 @@ def quality_compare(lst):
     lst (list of FuzzyClustering instances)
         Clustering solutions to compare (must be partitions of the same
         dataset).
+    q_method (FuzzyClustering class method)
+        Method for the evaluation of clustering quality. FC.VIdso() or
+        FC.intrainter_silhouette().
+        Default is None and use the value of the objective function.
 
     Returns
     -------
@@ -714,30 +717,109 @@ def quality_compare(lst):
     sorted_lst (list)
         The positions of the elements of lst in decreasing clustering
         quality order.
-
-    Notes
-    -----
-    If the elements of lst have a three-element clustering_quality
-    attribute, the clustering quality is assessed by the VIdso index.
-    If the elements of lst have a n_samples-element clustering_quality
-    attribute, the clustering quality is assessed with the inter-intra
-    silhouette.
-    Else, use the final objective function value.
     """
-    L = min([len(a.clustering_quality) for a in lst])
-    if L == 3:  # VIdso index.
-        disp = [elt[0] for elt in lst]
-        sep = [elt[1] for elt in lst]
-        ovlp = [elt[2] for elt in lst]
-        quality = [((d/max(disp)) + (o/max(ovlp))) / (s/max(sep))
-                   for d, o, s in zip(disp, ovlp, sep)
-                   ]
-    elif L == lst[0].n_samples:  # intra-inter silhouette.
-        quality = [np.mean(elt) for elt in lst]
-    else:  # Use the objective function.
-        quality = [elt.obj_func[-1] for elt in lst]
+    if q_method is None:
+        # Uses the objective function.
+        quality = [elt.obj_function[-1] for elt in lst]
+    else:
+        quality = [q_method(elt) for elt in lst]
+        if len(quality[0]) == 3:
+            # Uses the VIdso index.
+            disp, sep, ovlp = [elt for elt in quality]
+            quality = [(d / max(disp) + o / max(ovlp)) / (s / max(sep))
+                       for d, o, s in zip(max, ovlp, sep)
+                       ]
+        elif len(quality[0] == lst[0].n_samples):
+            # Uses the intrainter silhouette.
+            quality = [np.mean(elt) for elt in lst]
     sorted_lst = sorted(range(len(quality)), key=quality.__getitem__)
     return quality, sorted_lst
+
+
+def full_process(dataset, fuzz_range, step, nc_max, algo,
+                 itermax, err, err_bis=None, seed=None, q_method=None,
+                 verbose=0
+                 ):
+    """
+    Runs the full classification procedure. Runs the fuzzy c-means
+    algorithm input on the dataset for each fuzzifier value in
+    fuzzif_range (using increments of size step) and for 2, ..., nc_max
+    clusters.At each step, makes 100 realisations and keeps the
+    solution with the best clustering quality (according to q_method).
+
+    Parameters
+    ----------
+    dataset (2d array)
+        The dataset to classify. Samples in rows, features in columns.
+    fuzz_range (2-float list)
+        Boundaries of the fuzzifier range to cover. Raises a ValueError
+        if outside of [algo.min_fuzzifier, algo.max_fuzzifier].
+    step (float)
+        Size of the increments to cover the range of fuzzifier values.
+    nc_max (integer)
+        Maximum number of clusters involved.
+    algo (class).
+        The version of the fuzzy c-means algorithm to use.
+        FuzzyClustering, FuzzyClusteringPoly, FuzzyClusteringRegulSh,
+        or FuzzyClusteringRegulQuad.
+    itermax (integer)
+        Maximum number of iterations to reach convergence.
+    err (float)
+        Minimum improvement of objective function to continue the
+        iterations.
+    err_bis (float)
+        Minimum difference in cluster centroid position to continue
+        the iteration.
+        Default is None. If given, overrides err.
+    seed (integer, float, byte, or bytearray)
+        Seed of the random number generator used to initiate random
+        clusters.
+    q_method (class method):
+        Method for the evaluation of clustering quality. FC.VIdso() or
+        FC.intrainter_silhouette().
+        Default is None and use the value of the objective function.
+    verbose (boolean):
+        Amount of verbal information to display.
+        Default is 1 and prints algorithm advancement messages.
+
+    Returns
+    -------
+    clustering_solution (dict)
+        A dictionary of dictionaries storing the clustering solutions.
+        Primary keys are the values of the fuzzifier parameter.
+        Secondary keys are the numbers of clusters.
+        The items of the secondary dictionaries are the FuzzyClustering
+        instances corresponding to the fuzzifier value and number of
+        clusters given as primary and secondary key.
+    """
+    cd1 = fuzz_range[0] < algo.min_fuzzifier
+    cd2 = fuzz_range[1] > algo.max_fuzzifier
+    if cd1 or cd2:
+        raise ValueError('Fuzzifier values must be within [{},{}]'.format(algo.min_fuzzifier, algo.max_fuzzifier))
+    clustering_solution = {}
+    for p in np.arange(fuzz_range[0], fuzz_range[1], step):
+        clustering_solution[round(p, 2)] = {}
+        for k in range(2, nc_max+1):
+            results = [None]*100
+            for n in range(100):
+                FC = algo(dataset, p, k)
+                FC.initiate_clusters(seed)
+                FC.calculate_memberships()
+                FC.evaluate_objective_function()
+                stopiter = err + 1
+                n_loops = 0
+                while stopiter >= err and n_loops <= itermax:
+                    FC.update_clusters()
+                    FC.calculate_memberships()
+                    FC.evaluate_objective_function()
+                    stopiter = FC.obj_function[-1] - FC.obj_function[-2]
+                    n_loops += 1
+                results[n] = FC
+                if verbose:
+                    print('Fuzzifie-{} and {} clusters: done!'.format(p, k))
+            q, idx = compare_quality(results, q_method)
+            clustering_solution[p][k] = results[idx[0]]
+    return clustering_solution
 
 
 def euclidian_distance(A, B):

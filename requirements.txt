@@ -1,0 +1,4 @@
+numpy
+matplotlib
+-e git+https://github.com/floreencia/pylotwhale.git#egg=pylotwhale
+sklearn

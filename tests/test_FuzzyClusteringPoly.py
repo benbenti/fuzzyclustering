@@ -1,71 +1,41 @@
-# import numpy as np
-# import fuzzyclustering.algorithms as al
-# import math
+import numpy as np
+import itertools
+import lib.algorithms as al
 
-# def test__f_sizematch(FCP_sample):
-    # FCP_sample.initiate_clusters()
-    # FCP_sample.calculate_memberships()
-    # result = FCP_sample._f()
-    # assert result.shape == FCP_sample.memberships.shape
 
-# def test__f_simple_case():
-    # dataset = np.array([])
-    # FCP = al.FuzzyClusteringPoly(dataset, 0.5, 2)
-    # FCP.memberships = np.array([[1, 0, 0], [0.5, 0.2, 0.3], [1/3, 1/3, 1/3]])
-    # result = FCP._f()
-    # cmp = np.isclose(result, np.array([[1, 0, 0], [5/12, 11/75, 23/100], [7/27, 7/27, 7/27]]))
-    # assert cmp.all()
+def test_size__f(FCP_random):
+    FCP_random.initiate_clusters()
+    FCP_random.calculate_memberships()
+    assert FCP_random._f().shape == FCP_random.memberships.shape
 
-# def test_calculate_memberships_sizematch(FCP_sample):
-    # FCP_sample.initiate_clusters()
-    # FCP_sample.calculate_memberships()
-    # assert FCP_sample.memberships.shape == (FCP_sample.n_samples, FCP_sample.n_clusters)
+def test_value__f():
+    FCP = al.FuzzyClusteringPoly(np.array([]), 0.5, 3)
+    FCP.memberships = np.array([[1, 0, 0], [0.5, 0.2, 0.3], [1/3, 1/3, 1/3]])
+    result = FCP._f()
+    expected = np.array([[1, 0, 0], [5/12, 11/75, 23/100], [7/27, 7/27, 7/27]])
+    assert np.isclose(result, expected).all()
 
-# def test_calculate_memberships_betweenzeroandone(FCP_sample):
-    # FCP_sample.initiate_clusters()
-    # FCP_sample.calculate_memberships()
-    # assert (FCP_sample.memberships >= 0).all()
-    # assert (FCP_sample.memberships <= 1).all()
+def test_expectedvalue_evaluate_objective_function(unif_1D):
+    FCP = FuzzyClusteringPoly(unif_1D, 0.5, 2)
+    FCP.clusters.append(np.array([[3.1], [8.9]]))
+    FCP.calculate_memberships()
+    FCP.evaluate_objective_function()
+    assert np.isclose(FCP.obj_function, 46.3283333333333333)
 
-# def test_calculate_memberships_sumtoone(FCP_sample):
-    # FCP_sample.initiate_clusters()
-    # FCP_sample.calculate_memberships()
-    # result = np.sum(FCP_sample.memberships, axis=1)
-    # assert np.isclose(result, 1).all()
+def test_size_calculate_memberships(FCP_random):
+    FCP_random.initiate_clusters()
+    FCP_random.calculate_memberships()
+    expected = (FCP_random.n_samples, FCP_random.n_clusters)
+    assert FCP_random.memberships.shape == expected
 
-# def test_calculate_memberships_simplecase():
-    # dataset = np.array([1, 2, 3, 4, 5, 6, 7, 8, 9])
-    # ct = np.array([0, 10])
-    # nc = 2
-    # p = 0.25
-    # FCP = al.FuzzyClusteringPoly(dataset, p, nc)
-    # FCP.clusters.append(ct)
-    # FCP.calculate_memberships()
-    # mb = FCP.memberships
-    # # Check if membership scores match distance ratios.
-    # assert (mb[:6,0] == mb[-1:-7:-1, 1]).all()
+def test_between0and1_calculate_memberships(FCP_random):
+    FCP_random.initiate_clusters()
+    FCP_random.calculate_memberships()
+    assert (FCP_random.memberships >= 0).all()
+    assert (FCP_random.memberships <= 1).all()
 
-# def test_calculate_memberships_clusteronsample():
-    # # Raises warnings because division by zero.
-    # dataset = np.array([[0, 0],
-                        # [0, 1],
-                        # [1, 0]
-                        # ]
-                       # )
-    # nc = 2
-    # p = 0.5
-    # FCP = al.FuzzyClusteringPoly(dataset, p, nc)
-    # FCP.clusters = [np.array([[0, 0],[6, 6]])]
-    # FCP.calculate_memberships()
-    # mb = FCP.memberships
-    # assert (mb[0] == [1, 0]).all()
-
-# def test_evaluate_objective_function():
-    # dataset = np.array([[0], [5], [10]])
-    # nc = 2
-    # p = 0.5
-    # FCP = al.FuzzyClusteringPoly(dataset, p, nc)
-    # FCP.clusters.append(np.array([[0], [10]]))
-    # FCP.calculate_memberships()
-    # FCP.evaluate_objective_function()
-    # assert math.isclose(FCP.obj_function[-1], 125/6)
+def test_sumto1_calculate_memberships(FCP_random):
+    FCP_random.initiate_clusters()
+    FCP_random.calculate_memberships()
+    result = np.sum(FCP_random.memberships, axis=1)
+    assert np.isclose(result, 1).all()
