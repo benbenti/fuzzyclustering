@@ -102,7 +102,7 @@ The polynomial fuzzifier introduces an area of crisp clustering around cluster c
 The objective function of the FCM with polynomial fuzzifier is:
 
 <img src=
-"https://render.githubusercontent.com/render/math?math=%5CLarge+%5Cdisplaystyle+%5CO(X,C,M)=\sum_{i=1}^{N_s}\sum_{k=1}^{N_c}(\frac{1-p}{1+p}m_{ik}^2%2B\frac{2p}{1+p}m_{ik})d_{ik}^2">
+"https://render.githubusercontent.com/render/math?math=%5CLarge+%5Cdisplaystyle+%5CO(X,C,M)=\sum_{i=1}^{N_s}\sum_{k=1}^{N_c}(\frac{1-p}{1%2Bp}m_{ik}^2%2B\frac{2p}{1%2Bp}m_{ik})d_{ik}^2">
 
 Where:
 - <img src=
