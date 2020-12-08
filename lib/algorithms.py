@@ -722,16 +722,18 @@ def compare_quality(lst, q_method=None):
         # Uses the objective function.
         quality = [elt.obj_function[-1] for elt in lst]
     else:
-        quality = [q_method(elt) for elt in lst]
-        if len(quality[0]) == 3:
+        _ = [q_method(elt) for elt in lst]
+        if len(lst[0].cluster_quality) == 3:
             # Uses the VIdso index.
-            disp, sep, ovlp = [elt for elt in quality]
+            disp = [elt.cluster_quality[0] for elt in lst]
+            sep = [elt.cluster_quality[1] for elt in lst]
+            ovlp = [elt.cluster_quality[2] for elt in lst]
             quality = [(d / max(disp) + o / max(ovlp)) / (s / max(sep))
-                       for d, o, s in zip(max, ovlp, sep)
+                       for d, o, s in zip(disp, ovlp, sep)
                        ]
-        elif len(quality[0] == lst[0].n_samples):
+        elif len(lst[0].cluster_quality == lst[0].n_samples):
             # Uses the intrainter silhouette.
-            quality = [np.mean(elt) for elt in lst]
+            quality = [np.mean(elt.cluster_quality) for elt in lst]
     sorted_lst = sorted(range(len(quality)), key=quality.__getitem__)
     return quality, sorted_lst
 
@@ -815,10 +817,10 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
                     stopiter = FC.obj_function[-1] - FC.obj_function[-2]
                     n_loops += 1
                 results[n] = FC
-                if verbose:
-                    print('Fuzzifie-{} and {} clusters: done!'.format(p, k))
             q, idx = compare_quality(results, q_method)
-            clustering_solution[p][k] = results[idx[0]]
+            clustering_solution[round(p, 2)][k] = results[idx[0]]
+            if verbose:
+                print('Fuzzifier {} and {} clusters: done!'.format(p, k))
     return clustering_solution
 
 
