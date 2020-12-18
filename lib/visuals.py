@@ -43,7 +43,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
-import lib.algorithms as algo
+import lib.algorithms as al
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import pylotwhale.utils.plotTools as pT
@@ -81,13 +81,13 @@ def distance_check(FC, colours=['k', 'b'], YLIM=None,
     colours[1]).
     """
 
-    dist_data = np.array([[algo.euclidian_distance(i, j)
+    dist_data = np.array([[al.euclidian_distance(i, j)
                            for i in FC.data
                            ]
                           for j in FC.data
                           ]
                          )
-    dist_clusters = np.array([algo.euclidian_distance(c1, c2)
+    dist_clusters = np.array([[al.euclidian_distance(c1, c2)
                                for c1 in FC.clusters[-1]
                                ]
                               for c2 in FC.clusters[-1]
@@ -142,7 +142,7 @@ def identify_stable_solutions(dict_FC, fileName=None, res=150):
     # Identify the best clustering solution for each value of fuzzifier.
     for i, p in enumerate(dict_FC.keys()):
         lst_FC = [dict_FC[p][key] for key in dict_FC[p].keys()]  # Same fuzzifier, different number of clusters.
-        quality, idx = [elt.quality for elt in lst_FC]  # Uses the same quality index as the fuzzy c-means process.
+        quality, idx = al.compare_quality(lst_FC)  # Uses the same quality index as the fuzzy c-means process.
         best = lst_FC[idx[0]]  # Best fuzzy partition.
         stable_solutions[i] = [p, best.n_clusters, quality[idx[0]]]
 
@@ -315,7 +315,7 @@ def partition_comparison(FC, partition, fileName=None, res=150):
         corr_matrix[main_cluster[i], partition[i]] += 1
         # Adds each sample to the count of the corresponding category.
     column_sums = np.sum(corr_matrix, axis=0)
-    norm_matrix = corr_matrix / column_sums.
+    norm_matrix = corr_matrix / column_sums
     fig, ax = plt.subplots()
     ax.imshow(norm_matrix, cmap=plt.cm.Blues, alpha=0.5,
               interpolation='nearest'
@@ -390,30 +390,32 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     for grp, i in enumerate(set(grouping)):
         x = pc[grouping == grp, 0]
         y = pc[grouping == grp, 1]
-        ax.scatter(x, y, c=colour_set[i], marker='+')
-        cov = np.cov(x, y)
-        pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
-        # Get the ellipse radii.
-        radius_x = np.sqrt(1 + pearson)
-        radius_y = np.sqrt(1 - pearson)
-        ellipse = Ellipse((0, 0),
-                          width=radius_x * 2,
-                          height=radius_y * 2,
-                          facecolor=colour_set[i],
-                          alpha=0.3,
-                          edgecolor=colour_set[i],
-                          linewidth=2
-                          )
-        # Scale to n_std standard deviations and center on the means.
-        scale_x = np.sqrt(cov[0, 0]) * n_std
-        scale_y = np.sqrt(cov[1, 1]) * n_std
-        # Rotate and scale the ellipse.
-        transf = transforms.Affine2D() \
-                 .rotate_deg(45) \
-                 .scale(scale_x, scale_y) \
-                 .translate(np.mean(x), np.mean(y))
-        ellipse.set_transform(transf + ax.transData)
-        ax.add_patch(ellipse)
+        if len(x) > 0:
+            ax.scatter(x, y, c=colour_set[i], marker='+')
+            if len(x) >= 2:
+                cov = np.cov(x, y)
+                pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+                # Get the ellipse radii.
+                radius_x = np.sqrt(1 + pearson)
+                radius_y = np.sqrt(1 - pearson)
+                ellipse = Ellipse((0, 0),
+                                  width=radius_x * 2,
+                                  height=radius_y * 2,
+                                  facecolor=colour_set[i],
+                                  alpha=0.3,
+                                  edgecolor=colour_set[i],
+                                  linewidth=2
+                                  )
+                # Scale to n_std standard deviations and center on the means.
+                scale_x = np.sqrt(cov[0, 0]) * n_std
+                scale_y = np.sqrt(cov[1, 1]) * n_std
+                # Rotate and scale the ellipse.
+                transf = transforms.Affine2D() \
+                         .rotate_deg(45) \
+                         .scale(scale_x, scale_y) \
+                         .translate(np.mean(x), np.mean(y))
+                ellipse.set_transform(transf + ax.transData)
+                ax.add_patch(ellipse)
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
     plt.show()

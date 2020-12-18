@@ -687,9 +687,9 @@ def classification(dataset, p, nc, algo,
             FC.calculate_memberships()
             FC.evaluate_objective_function()
             if not err_bis:
-                stopiter = FC.obj_function[-1] - FC.obj_function[-2]
+                stopiter = FC.obj_function[-2] - FC.obj_function[-1]
             else:
-                stopiter = np.min(FC.clusters[-1] - FC.clusters[-2])
+                stopiter = np.min(abs(FC.clusters[-1] - FC.clusters[-2]))
             n_loops += 1
         FC_list[n] = FC
     return FC_list
@@ -718,22 +718,24 @@ def compare_quality(lst, q_method=None):
         The positions of the elements of lst in decreasing clustering
         quality order.
     """
-    if q_method is None:
-        # Uses the objective function.
-        quality = [elt.obj_function[-1] for elt in lst]
-    else:
-        _ = [q_method(elt) for elt in lst]
-        if len(lst[0].cluster_quality) == 3:
-            # Uses the VIdso index.
-            disp = [elt.cluster_quality[0] for elt in lst]
-            sep = [elt.cluster_quality[1] for elt in lst]
-            ovlp = [elt.cluster_quality[2] for elt in lst]
-            quality = [(d / max(disp) + o / max(ovlp)) / (s / max(sep))
-                       for d, o, s in zip(disp, ovlp, sep)
-                       ]
-        elif len(lst[0].cluster_quality == lst[0].n_samples):
-            # Uses the intrainter silhouette.
-            quality = [np.mean(elt.cluster_quality) for elt in lst]
+    if lst[0].cluster_quality is None:  # No computed quality yet.
+        if q_method is None:  ## Uses the objective funtion.
+            for elt in lst:
+                elt.cluster_quality = elt.obj_function[-1]
+        else:  # Runs q_method.
+            _ = [q_method(elt) for elt in lst]
+
+    if isinstance(lst[0].cluster_quality, np.float):  # Uses the objective function.
+        quality = [elt.cluster_quality for elt in lst]
+    elif len(lst[0].cluster_quality) == 3:  # Uses the VIdso index.
+        disp = [elt.cluster_quality[0] for elt in lst]
+        sep = [elt.cluster_quality[1] for elt in lst]
+        ovlp = [elt.cluster_quality[2] for elt in lst]
+        quality = [(d / max(disp) + o / max(ovlp)) / (s / max(sep))
+                   for d, o, s in zip(disp, ovlp, sep)
+                   ]
+    elif len(lst[0].cluster_quality == lst[0].n_samples):  # Uses the intra-inter silhouette.
+        quality = [np.mean(elt.cluster_quality) for elt in lst]
     sorted_lst = sorted(range(len(quality)), key=quality.__getitem__)
     return quality, sorted_lst
 
@@ -799,6 +801,8 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
     if cd1 or cd2:
         raise ValueError('Fuzzifier values must be within [{},{}]'.format(algo.min_fuzzifier, algo.max_fuzzifier))
     clustering_solution = {}
+    if err_bis:
+        err = err_bis
     for p in np.arange(fuzz_range[0], fuzz_range[1], step):
         clustering_solution[round(p, 2)] = {}
         for k in range(2, nc_max+1):
@@ -814,13 +818,16 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
                     FC.update_clusters()
                     FC.calculate_memberships()
                     FC.evaluate_objective_function()
-                    stopiter = FC.obj_function[-1] - FC.obj_function[-2]
+                    if not err_bis:
+                        stopiter = FC.obj_function[-2] - FC.obj_function[-1]
+                    else:
+                        stopiter = np.min(abs(FC.clusters[-1]-FC.clusters[-2]))
                     n_loops += 1
                 results[n] = FC
             q, idx = compare_quality(results, q_method)
             clustering_solution[round(p, 2)][k] = results[idx[0]]
             if verbose:
-                print('Fuzzifier {} and {} clusters: done!'.format(p, k))
+                print('Fuzzifier {} and {} clusters: done!'.format(round(p, 2), k))
     return clustering_solution
 
 
