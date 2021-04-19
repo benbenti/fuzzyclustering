@@ -106,11 +106,11 @@ def distance_check(FC, colours=['k', 'b'], YLIM=None,
     plt.show()
 
 
-def identify_stable_solutions(dict_FC, fileName=None, res=150):
+def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
     """
     Finds the optimal number of clusters for each value of fuzzifier,
-    and plots the optimal number of clusters as a function of the
-    fuzzifier value.
+    and optionally plots the optimal number of clusters as a function
+    of the fuzzifier value.
     Clustering solutions which are stable over a large range of
     fuzzifier values are considered to reflect an underlying structure
     in the dataset.
@@ -118,8 +118,11 @@ def identify_stable_solutions(dict_FC, fileName=None, res=150):
     Arguments
     ---------
     dict_FC (dict)
-        The results of a fuzzy c-means classification arranges in a
+        The results of a fuzzy c-means classification arranged in a
         dictionary. See module algorithms for details.
+    plot (boolean)
+        Whether or not to show the plot. Default is False and does not
+        display the plot.
     fileName (path)
         Location to save the figure in. Default is None and does not
         save the figure.
@@ -133,10 +136,10 @@ def identify_stable_solutions(dict_FC, fileName=None, res=150):
         the optimal number of clusters (2nd col) and the quality index
         of the optimal solution (3rd col).
     Plots the number of clusters in the best solution as a function of
-    the fuzzifier value.
+    the fuzzifier value (optional).
     """
 
-    stable_solutions = np.empty(shape=(len(dict_FC.keys()), 3))
+    stable_solutions = np.empty(shape=(len(dict_FC.keys()), 4))
     # The keys of dict_FC are the fuzzifier values.
 
     # Identify the best clustering solution for each value of fuzzifier.
@@ -144,16 +147,20 @@ def identify_stable_solutions(dict_FC, fileName=None, res=150):
         lst_FC = [dict_FC[p][key] for key in dict_FC[p].keys()]  # Same fuzzifier, different number of clusters.
         quality, idx = al.compare_quality(lst_FC)  # Uses the same quality index as the fuzzy c-means process.
         best = lst_FC[idx[0]]  # Best fuzzy partition.
-        stable_solutions[i] = [p, best.n_clusters, quality[idx[0]]]
+        stable_solutions[i] = [p, list(dict_FC[p].keys())[idx[0]], best.n_clusters, quality[idx[0]]]
 
     # Plot the optimal number of clusters relative to the fuzzifier value.
-    plt.plot(stable_solutions[:, 0], stable_solutions[:, 1], 'kx')
+    fig, ax = plt.subplots(figsize=(8, 8))
+    plt.plot(stable_solutions[:, 0], stable_solutions[:, 2], 'kx')
     plt.xlabel('Fuzzifier value')
     plt.ylabel('Optimal number of clusters')
-    plt.ylim(0, max(stable_solutions[:, 1] + 1))
+    plt.ylim(0, max(stable_solutions[:, 2] + 1))
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
+    if plot:
+        plt.show()
+    else:
+        plt.close()
     return stable_solutions
 
 
@@ -218,7 +225,7 @@ def plot_typicality(FC, grouping=None, colour_set=None,
     """
 
     mb = FC.memberships
-    typ = typicality(mb)
+    typ = typicality(FC)
     if grouping is None:  # Use cluster with highest score to colour samples.
         grouping = typ[:, 1]
 
@@ -229,11 +236,12 @@ def plot_typicality(FC, grouping=None, colour_set=None,
                for group in set(grouping)
                ]
     if colour_set is None:
-        colour_set = ['#1f78b4', '#33a02c', '#e31a1c', '#ff7f00', '#6a3d9a',
-                      '#b15928', '#a6cee3', '#b2df8a', '#fb9a99', '#fdbf6f',
-                      '#cab2d6', '#ffff99', '#ffffff'
-                      ]
-    plt.hist(typ_lst, bins=20, histtype='barstacked', color=colour_set)
+        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
+                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+                               ]
+                              )
+    plt.hist(typ_lst, bins=20, histtype='barstacked', color=colour_set[0:len(set(grouping))])
     plt.xlim(0, 1)
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
@@ -329,8 +337,7 @@ def partition_comparison(FC, partition, fileName=None, res=150):
     ax.set_xlabel('Reference partition')
     ax.set_ylabel('Fuzzy clusters')
     # Display sample counts in the image.
-    pT.display_numbers(fig, ax, corr_matrix,
-                       condition=None, fontSz=8
+    pT.display_numbers(fig, ax, corr_matrix, fontSz=8
                        )
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
@@ -359,7 +366,7 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     colour_set (list):
         The colours used to represent the different categories in the
         dataset and their confidence ellipse. Default is None and uses
-        a predefined colourblind-friendly set of 13 colours.
+        a predefined colourblind-friendly set of 15 colours.
     fileName (path):
         Location to save the figure. Default is None and does not save
         the figure.
@@ -376,52 +383,58 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     The figures given for the confidence interval do not account for
     covariance. A larger number of outliers should be expected.
     """
-    if colour_set is None:
-        colour_set = ['#1f78b4', '#33a02c', '#e31a1c', '#ff7f00', '#6a3d9a',
-                      '#b15928', '#a6cee3', '#b2df8a', '#fb9a99', '#fdbf6f',
-                      '#cab2d6', '#ffff99', '#ffffff'
-                      ]
+    if colour_set is None:  # Default colour palette.
+        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
+                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+                               ]
+                              )
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
-    # Compute the two first principal components.
-    pca = PCA(n_components=2)
-    pc = pca.fit_transform(FC.data)
-    fig, ax = plt.subplots()
-    for grp, i in enumerate(set(grouping)):
-        x = pc[grouping == grp, 0]
-        y = pc[grouping == grp, 1]
-        if len(x) > 0:
+    # Run the PCA and compute the two first principal components.
+    pca = PCA(n_components=2, svd_solver='full')
+    princ_comp = pca.fit_transform(FC.data)
+    # Make the plot.
+    fig, ax = plt.subplots(figsize=(8, 8))
+    for i, grp in enumerate(sorted(list(set(grouping)))):
+        x = princ_comp[grouping == grp, 0]
+        y = princ_comp[grouping == grp, 1]
+        if len(x) > 0:  # Make scatter plot.
             ax.scatter(x, y, c=colour_set[i], marker='+')
-            if len(x) >= 2:
-                cov = np.cov(x, y)
-                pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
-                # Get the ellipse radii.
-                radius_x = np.sqrt(1 + pearson)
-                radius_y = np.sqrt(1 - pearson)
-                ellipse = Ellipse((0, 0),
-                                  width=radius_x * 2,
-                                  height=radius_y * 2,
-                                  facecolor=colour_set[i],
-                                  alpha=0.3,
-                                  edgecolor=colour_set[i],
-                                  linewidth=2
-                                  )
-                # Scale to n_std standard deviations and center on the means.
-                scale_x = np.sqrt(cov[0, 0]) * n_std
-                scale_y = np.sqrt(cov[1, 1]) * n_std
-                # Rotate and scale the ellipse.
-                transf = transforms.Affine2D() \
-                         .rotate_deg(45) \
-                         .scale(scale_x, scale_y) \
-                         .translate(np.mean(x), np.mean(y))
-                ellipse.set_transform(transf + ax.transData)
-                ax.add_patch(ellipse)
+        if len(x) >= 2:  # Draw confidence ellipse.
+            cov = np.cov(x, y)
+            pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+            # Get the ellipse radius.
+            radius_x = np.sqrt(1 + pearson)
+            radius_y = np.sqrt(1 - pearson)
+            ellipse = Ellipse((0, 0),
+                              width=radius_x * 2,
+                              height=radius_y * 2,
+                              facecolor=colour_set[i],
+                              alpha=0.3,
+                              edgecolor=colour_set[i],
+                              linewidth=2
+                              )
+            # Scale to n_std standard deviations and center on the means.
+            scale_x = np.sqrt(cov[0, 0]) * n_std
+            scale_y = np.sqrt(cov[1, 1]) * n_std
+            # Rotate and scale the ellipse.
+            transf = transforms.Affine2D() \
+                     .rotate_deg(45) \
+                     .scale(scale_x, scale_y) \
+                     .translate(np.mean(x), np.mean(y))
+            ellipse.set_transform(transf + ax.transData)
+            ax.add_patch(ellipse)
+    plt.legend(sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
+    ax.set_xlabel('1st principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[0])))
+    ax.set_ylabel('2nd principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[1])))
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
+    # plt.show()
+    plt.close('all')
 
 
-def tSNE_plot(FC, p, n,
+def tSNE_plot(FC, p, n, rs=None, ellipse=False,
               n_cp=None,
               grouping=None, colour_set=None,
               fileName=None, res=150
@@ -442,6 +455,12 @@ def tSNE_plot(FC, p, n,
     n (integer):
         Number of iterations to perform for the t-SNE.
         Usual values in [1000-5000].
+    rs (object):
+        Random state to use for the t-SNE algorithm. Default is None and
+        chooses a random state based on system and current time.
+    ellipse (bool):
+        Whether to draw confidence ellipses for each grouping category.
+        Default if False and does not draw confidence ellipses.
     n_cp (integer):
         Number of principal components to keep before performing the
         t-SNE.
@@ -452,7 +471,7 @@ def tSNE_plot(FC, p, n,
     colour_set (list):
         The colours used to represent the different categories in the
         dataset and their confidence ellipse. Default is None and uses
-        a predefined colourblind-friendly set of 13 colours.
+        a predefined colourblind-friendly set of 15 colours.
     fileName (path):
         Location to save the figure. Default is None and does not save
         the figure.
@@ -469,24 +488,52 @@ def tSNE_plot(FC, p, n,
     complete view of the dataset.
     """
     if colour_set is None:
-        colour_set = ['#1f78b4', '#33a02c', '#e31a1c', '#ff7f00', '#6a3d9a',
-                      '#b15928', '#a6cee3', '#b2df8a', '#fb9a99', '#fdbf6f',
-                      '#cab2d6', '#ffff99', '#ffffff'
-                      ]
+        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
+                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
+                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+                               ]
+                              )
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
     if n_cp is None:  # No data transformation.
         tsne_data = FC.data
     else:  # PCA transformation.
-        pca = PCA(n_components=n_cp)
+        pca = PCA(n_components=n_cp, svd_solver='full')
         tsne_data = pca.fit_transform(FC.data)
-    tsne = TSNE(perplexity=p, n_iter=n)
+    tsne = TSNE(perplexity=p, n_iter=n, random_state=rs, method='exact')
     plot_data = tsne.fit_transform(tsne_data)
-    fig, ax = plt.subplots()
-    for grp, i in enumerate(set(grouping)):
+    fig, ax = plt.subplots(figsize=(8, 8))
+    for i, grp in enumerate(sorted(list(set(grouping)))):
         x = plot_data[grouping==grp, 0]
         y = plot_data[grouping==grp, 1]
-        ax.scatter(x, y, c=colour_set[i], marker='+')
+        if len(x)>0:
+            ax.scatter(x, y, c=colour_set[i], marker='+')
+        if len(x)>2:  # Draw confidence ellipse.
+            cov = np.cov(x, y)
+            pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
+            # Get the ellipse radius.
+            radius_x = np.sqrt(1 + pearson)
+            radius_y = np.sqrt(1 - pearson)
+            ellipse = Ellipse((0, 0),
+                              width=radius_x * 2,
+                              height=radius_y * 2,
+                              facecolor=colour_set[i],
+                              alpha=0.3,
+                              edgecolor=colour_set[i],
+                              linewidth=2
+                              )
+            # Scale to 1 standard deviations and center on the means.
+            scale_x = np.sqrt(cov[0, 0]) * 1
+            scale_y = np.sqrt(cov[1, 1]) * 1
+            # Rotate and scale the ellipse.
+            transf = transforms.Affine2D() \
+                               .rotate_deg(45) \
+                               .scale(scale_x, scale_y) \
+                               .translate(np.mean(x), np.mean(y))
+            ellipse.set_transform(transf + ax.transData)
+            ax.add_patch(ellipse)
+    plt.legend(sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
+    # plt.show()
+    plt.close('all')
