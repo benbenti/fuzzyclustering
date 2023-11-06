@@ -869,7 +869,7 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
                     FC.update_clusters()
                     flag = False ## Detect cluster fusion.
                     FC.fuse_centroids()
-                    if (FC.clusters[-1] == FC.clusters[-2]).all(): # If fusion
+                    if not (FC.clusters[-1] == FC.clusters[-2]).all(): # If fusion
                         flag = True
                     FC.calculate_memberships()
                     FC.evaluate_objective_function()

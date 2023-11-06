@@ -10,6 +10,8 @@ number of clusters. The first step of the analysis of FCM results is to
 identify interesting clustering solutions. Clustering solutions which
 are stable over a wide range of fuzzifier values are considered
 representative of an underlying structure.
+It may be necessary for further analyses to harmonise the cluster labels across
+all the realisations of a clustering solution. We provide a tool to do so.
 To further characterise the fuzzy partitions, this module propose the
 computation of the typicality of samples - a quantitative measure of
 whether samples are much closer to one cluster than the others or how
@@ -31,6 +33,7 @@ FUNCTIONS
 ---------
 distance_check
 identify_stable_solutions
+harmonise_cluster_order
 typicality
 plot_typicality
 triangular_gradation_plot
@@ -43,9 +46,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
+import matplotlib.lines as lines
 import lib.algorithms as al
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
+from collections import Counter
 import pylotwhale.utils.plotTools as pT
 
 
@@ -164,6 +169,81 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
     return stable_solutions
 
 
+def harmonise_cluster_order(FC, nclust):
+    """
+    A fuzzy clustering solution is a set of similar dataset partitions.
+    The number of clusters is the same for all partitions, and we expect to
+    find the same clusters in all realisations. However, the order of the
+    clusters in each partition is random.
+    In order the summarise the fuzzy clustering solution in a single partition,
+    we need to harmonise the cluster order across realisations.
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    ISSUE: Buggy harmonisation - some clusters may be omitted and others may
+    be duplicated, because the ordering method does not warrant a 1-1 asso-
+    ciation between clusters. Added a safeguard which cancels harmonisation
+    in problematic cases.
+    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    Arguments
+    ---------
+    fc (FuzzyClustering instance)
+        The fuzzy partition to harmonise.
+    nclust (integer)
+        The number of clusters in the solution to harmonise.
+
+    Results
+    -------
+    No output, the FuzzyClustering instance is updated.
+    """
+
+    # Get fuzziness values and initial number of clusters for all realisations
+    # of the clustering solution of interest
+    sol = identify_stable_solutions(FC)
+    pk = [tuple([i[0], i[1]]) for i in sol if i[2] == nclust]
+
+    # Get main cluster (highest membership score) for all realisations
+    keys1 = list(FC.keys())
+    keys2 = list(FC[keys1[0]].keys())
+    nsamples = FC[keys1[0]][keys2[0]].data.shape[0]  # dataset stored in FuzzyClustering objects.
+    mc = np.zeros(shape=(nsamples, len(pk)), dtype=float)
+    for (i, (p, k)) in enumerate(pk):
+        typ = typicality(FC[p][k])
+        mc[:, i] = typ[:, 1]
+
+    # Cluster harmonisation :
+    # Use first realisation as reference
+    # For each realisation :
+    #  - check which cluster is most similar to reference cluster
+    #  - store harmonised order
+    order = np.zeros(shape=(len(pk), nclust), dtype=int)
+    order[0] = np.arange(nclust)
+    ref = mc[:, 0]
+    for r in range(1, len(pk)):
+        tmp = mc[:, r]
+        for i in range(nclust):
+            c = Counter(tmp[ref == i])
+            order[r, i] = c.most_common()[0][0]
+
+    # Check for duplicates in the order list (= issues with the harmonisation).
+    flag = False
+    for lst in order:
+        s = set(lst)
+        if len(s)!=len(lst): # cluster duplication!
+            flag = True
+
+    if not flag:
+        for (i, (p, k)) in enumerate(pk):
+            # Change cluster order.
+            ct = FC[p][k].clusters[-1]  # load final cluster coordinates.
+            tmp = np.array(ct[order[i], :])  # reorder clusters.
+            FC[p][k].clusters.append(tmp)
+            # Update column order in membership score table
+            mb = FC[p][k].memberships
+            tmp = np.array(mb[:, order[i]])
+            FC[p][k].memberships = tmp
+
+    return
+
+
 def typicality(FC):
     """
     Measures the typicality of all samples of the dataset. The
@@ -195,7 +275,7 @@ def typicality(FC):
 
 
 def plot_typicality(FC, grouping=None, colour_set=None,
-                    fileName=None, res=150
+                    fig=None, ax=None, show_plot=False, fileName=None, res=150
                     ):
     """
     Plots a stacked histogram of typicality values, coloured by main
@@ -212,6 +292,15 @@ def plot_typicality(FC, grouping=None, colour_set=None,
     colour_set (list)
         The list of colours to use in the histogram. Default is None
         and uses a default set of 13 colourblind-suitable colours.
+    fig(figure)
+        Existing figure object to draw the plot, Default, is None and creates
+        a new figure
+    ax(Axes)
+        Existing Axes object to draw the plot. Default is None and creates a
+        new plot.
+    show_plot (boolean)
+        Whether to display the figure or not. Default is False and does not
+        display the histogram.*
     fileName (path)
         Location to save the figure. Default is None and does not save
         the figure.
@@ -241,14 +330,25 @@ def plot_typicality(FC, grouping=None, colour_set=None,
                                "#920000","#924900","#db6d00","#24ff24","#ffff6d"
                                ]
                               )
-    plt.hist(typ_lst, bins=20, histtype='barstacked', color=colour_set[0:len(set(grouping))])
+    if not fig and not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+    plt.hist(typ_lst, bins=20, histtype='barstacked',
+             color=colour_set[0:len(set(grouping))]
+             )
     plt.xlim(0, 1)
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
+    if show_plot:
+        plt.show()
+
+    return
 
 
-def triangular_gradation_plots(FC, c1, c2, fileName=None, res=150):
+def triangular_gradation_plots(FC, c1, c2,
+                               restrict=False, cols=['b', 'k'],
+                               fig=None, ax=None, show_plot=True, lgd=True,
+                               fileName=None, res=150):
     """
     Makes a triangular plot with the membership scores to a first
     cluster on the x-axis and the membership to a second cluster on the
@@ -262,6 +362,22 @@ def triangular_gradation_plots(FC, c1, c2, fileName=None, res=150):
         The index of the first cluster.
     c2 (integer)
         The index of the second cluster.
+    restrict (bool)
+        Whether to restrict the triangular plot to samples belonging mostly to
+        the displayed clusters. Default is False.
+    cols (list)
+        2-item list containing colours to use to mark main cluster on graph.
+        Default uses blue and black.
+    fig(figure)
+        Existing figure object to draw the plot, Default, is None and creates
+        a new figure
+    ax(Axes)
+        Existing Axes object to draw the plot. Default is None and creates a
+        new plot.
+    show_plot (boolean)
+        Whether to show the plot or not. Default is True and shows the plot.
+    lgd (bool)
+        Whether to label the axes on the plot. Default is True and show the labels
     fileName (path)
         Where to save the figure. Default is None and does not save
         the figure.
@@ -274,17 +390,61 @@ def triangular_gradation_plots(FC, c1, c2, fileName=None, res=150):
     A triangular gradation plot.
     """
 
-    x_mb = FC.memberships[:, c1]
-    y_mb = FC.memberships[:, c2]
-    plt.plot(x_mb, y_mb, 'b+')
-    plt.xlabel('Membership to cluster {}'.format(c1))
-    plt.ylabel('Membership to cluster {}'.format(c2))
+    # Get main cluster for colouring.
+    main_cluster = np.argmax(FC.memberships, axis=1)
+    second_cluster = np.argsort(FC.memberships, axis=1)[:, -2]
+    c1_ind = main_cluster==c1  # Colour 1
+    c2_ind = main_cluster==c2  # Colour 2
+    if restrict:  # Select samples which main clusters are c1 and c2.
+        ind = [i for i, elt in enumerate(zip(main_cluster, second_cluster))
+               if c1 in elt and c2 in elt
+               ]
+        # Correct choice of indices for colours 1 and 2.
+        c1_ind_r = [i for i in ind if c1_ind[i]]
+        c2_ind_r = [i for i in ind if c2_ind[i]]
+        # Membership scores to plot.
+        x_mb_c1 = FC.memberships[c1_ind_r, c1]
+        y_mb_c1 = FC.memberships[c1_ind_r, c2]
+        x_mb_c2 = FC.memberships[c2_ind_r, c1]
+        y_mb_c2 = FC.memberships[c2_ind_r, c2]
+    else:
+        # Membership scores to plot.
+        x_mb_c1 = FC.memberships[c1_ind, c1]
+        y_mb_c1 = FC.memberships[c1_ind, c2]
+        x_mb_c2 = FC.memberships[c2_ind, c1]
+        y_mb_c2 = FC.memberships[c2_ind, c2]
+        # Prepare a third colour for remaining samples.
+        others = [not(a or b) for a, b in zip(c1_ind, c2_ind)]
+        x_mb_oth = FC.memberships[others, c1]
+        y_mb_oth = FC.memberships[others, c2]
+    if not fig and not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+    # Scatter plots, coloured by main clusters.
+    if not restrict:
+        plt.plot(x_mb_oth, y_mb_oth, color="grey", marker='+', linewidth=0)
+    plt.plot(x_mb_c1, y_mb_c1, color=cols[0], marker='+', linewidth=0)
+    plt.plot(x_mb_c2, y_mb_c2, color=cols[1], marker='+', linewidth=0)
+    # Adjust plot zone.
     plt.xlim(0, 1)
     plt.ylim(0, 1)
-    plt.title('Gradation between clusters {} and {}'.format(c1, c2))
+    # Remove plot frame.
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    # Add diagonal lines to the plot.
+    plt.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
+    plt.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
+    if lgd:
+        plt.xlabel('Membership to cluster {}'.format(c1))
+        plt.ylabel('Membership to cluster {}'.format(c2))
+        plt.title('Gradation between clusters {} and {}'.format(c1, c2))
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
+    if show_plot:
+        plt.show()
+#    else:
+#        plt.close()
+    return
 
 
 def partition_comparison(FC, partition, fileName=None, res=150):
@@ -346,7 +506,7 @@ def partition_comparison(FC, partition, fileName=None, res=150):
 
 
 def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
-             fileName=None, res=150
+             fig=None, ax=None, fileName=None, show_plot=False, res=150
              ):
     """
     Plots the dataset using the first two dimensions of a PCA. Adds a
@@ -357,7 +517,8 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     FC (FuzzyClustering instance):
         Contains the dataset and the fuzzy partition of the data.
     grouping (list):
-        The grouping categories to plot the confidence ellipses.
+        The grouping categories to plot the confidence ellipses. Default is None
+        and uses the fuzzy clusters.
     n_std (integer):
         The number of standard deviations to use in the ellipses.
         1 corresponds roughly to a 68% confidence interval.
@@ -367,9 +528,21 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
         The colours used to represent the different categories in the
         dataset and their confidence ellipse. Default is None and uses
         a predefined colourblind-friendly set of 15 colours.
+    fig (figure)
+        An existing figure object to draw the plot. Default is None and creates
+        a new figure.
+    ax (Axes)
+        An existing Axes object to draw the plot. Default is None and creates a
+        new Axes object.
     fileName (path):
         Location to save the figure. Default is None and does not save
         the figure.
+    show_plot (boolean):
+        Whether to show the plot or not. Default is False and does not plot the
+        figure.
+    keep_axes (boolean):
+        Whether to return the Axes object of the figure for external use.
+        Default is False and does not return the Axes object.
     res (integer)
         Resolution (in dpi) of the saved figure. Default is 150.
 
@@ -395,12 +568,15 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     pca = PCA(n_components=2, svd_solver='full')
     princ_comp = pca.fit_transform(FC.data)
     # Make the plot.
-    fig, ax = plt.subplots(figsize=(8, 8))
+    if not fig and not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1,1,1)
     for i, grp in enumerate(sorted(list(set(grouping)))):
-        x = princ_comp[grouping == grp, 0]
-        y = princ_comp[grouping == grp, 1]
+        idx = [j for j, elt in enumerate(grouping) if elt==grp]
+        x = princ_comp[idx, 0]
+        y = princ_comp[idx, 1]
         if len(x) > 0:  # Make scatter plot.
-            ax.scatter(x, y, c=colour_set[i], marker='+')
+            ax.scatter(x, y, c=colour_set[i], marker='+', label='_nolabel_')
         if len(x) >= 2:  # Draw confidence ellipse.
             cov = np.cov(x, y)
             pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
@@ -425,13 +601,16 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
                      .translate(np.mean(x), np.mean(y))
             ellipse.set_transform(transf + ax.transData)
             ax.add_patch(ellipse)
-    plt.legend(sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.legend(ax.patches, sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
     ax.set_xlabel('1st principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[0])))
     ax.set_ylabel('2nd principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[1])))
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    # plt.show()
-    plt.close('all')
+    if show_plot:
+        plt.show()
+    else:
+        plt.close()
+    return
 
 
 def tSNE_plot(FC, p, n, rs=None, ellipse=False,
@@ -537,3 +716,5 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
     # plt.show()
     plt.close('all')
+
+    return
