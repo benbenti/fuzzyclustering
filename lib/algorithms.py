@@ -81,7 +81,7 @@ class FuzzyClustering():
         Number of clusters
     memberships (2d array)
         Membership scores. Samples in rows, clusters in columns.
-    objective_function (list of floats)
+    obj_function (list of floats)
         Successive values of the objective function.
     cluster_quality (float or list of floats)
         Quality index for the final clustering solution. Single value
@@ -254,12 +254,12 @@ class FuzzyClustering():
     def fuse_centroids(self, d_th=None):
         """
         Fuses cluster centroids closer than the fusion threshold.
-        By default, the fusion threshold corresponds to 1 % of the range of
+        By default, the fusion threshold corresponds to .01 % of the range of
         every feature in the dataset.
         """
 
         if d_th is None:
-            d_th = 0.01 * np.sum((np.max(self.data, axis=0) - np.min(self.data, axis=0)) ** 2) ** 1/2
+            d_th = 0.0001 * np.sum((np.max(self.data, axis=0) - np.min(self.data, axis=0)) ** 2) ** 1/2
 
         cluster_distance = np.array([[euclidian_distance(c1, c2)
                                       for c1 in self.clusters[-1]
@@ -278,27 +278,25 @@ class FuzzyClustering():
                        for i in range(self.n_clusters)
                        ]
 
-        # Fuse sets with common elements.
-        for i, elt in enumerate(close_set):
-            for j, lst in enumerate(close_set):
-                 if any(k in elt for k in lst):
-                     elt += [k for k in lst if k not in elt]
-            elt.sort()
-
-        # Keep unique sets.
-        fusion_index = [tuple(close_set[0])]
-        for i in close_set:
-            if tuple(i) not in fusion_index:
-                fusion_index.append(tuple(i))
-
-        # Calculate new clusters (mean of close clusters)
-        ct = np.empty(shape=(len(fusion_index), self.data.shape[1]))
-        for i, elt in enumerate(fusion_index):
-            ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
-
-        # Replace clusters with fused clusters.
-        self.clusters.append(ct)
-        self.n_clusters = ct.shape[0]
+        if max([sum(i) for i in close_set]) > 1: # Centroid fusion.
+            # Fuse sets with common elements.
+            for i, elt in enumerate(close_set):
+                for j, lst in enumerate(close_set):
+                     if any(k in elt for k in lst):
+                         elt += [k for k in lst if k not in elt]
+                elt.sort()
+            # Keep unique sets.
+            fusion_index = [tuple(close_set[0])]
+            for i in close_set:
+                if tuple(i) not in fusion_index:
+                    fusion_index.append(tuple(i))
+            # Calculate new clusters (mean of close clusters)
+            ct = np.empty(shape=(len(fusion_index), self.data.shape[1]))
+            for i, elt in enumerate(fusion_index):
+                ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
+            # Replace clusters with fused clusters.
+            self.clusters.append(ct)
+            self.n_clusters = ct.shape[0]
 
     def VIdso(self):
         """
@@ -867,18 +865,19 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
                 n_loops = 0
                 while stopiter >= err and n_loops <= itermax:
                     FC.update_clusters()
-                    flag = False ## Detect cluster fusion.
                     FC.fuse_centroids()
-                    if not (FC.clusters[-1] == FC.clusters[-2]).all(): # If fusion
-                        flag = True
                     FC.calculate_memberships()
                     FC.evaluate_objective_function()
-                    if flag: # If fusion, skip stopiter assessment and loop count.
+                    if (FC.clusters[-1].shape != FC.clusters[-2].shape): # If fusion, skip stopiter assessment and loop count.
                         continue
                     if not err_bis:
                         stopiter = FC.obj_function[-2] - FC.obj_function[-1]
                     else:
-                        stopiter = np.min(abs(FC.clusters[-1]-FC.clusters[-2]))
+                        for c1 in FC.clusters[-1]:
+                            for c2 in FC.clusters[-2]:
+                                diff = euclidian_distance(c1, c2)
+                                if diff <= stopiter and diff != 0:
+                                    stopiter = diff
                     n_loops += 1
                 results[n] = FC
             q, idx = compare_quality(results, q_method)
