@@ -151,23 +151,20 @@ class FuzzyClustering():
         """
         return 0
 
-    def initiate_clusters(self, s=None):
+    def initiate_clusters(self, rng):
         """
         Creates self.n_clusters random cluster centroids.
 
         Parameters
         ----------
-        s (integer, string, bytes, bytearray)
-            The seed of the random number generator (see random).
-            None seeds from current time or based on operating system.
+        rng (random.Random instance)
+            A seeded random number generator (see random).
 
         Notes
         -----
         The cluster centroids are drawn from a uniform distribution
         over the range of each feature in the dataset.
         """
-        rng = random.Random()
-        rng.seed(s)
         mins = np.min(self.data, axis=0)
         maxs = np.max(self.data, axis=0)
         self.clusters.append(np.array([[rng.uniform(a, b)
@@ -271,7 +268,7 @@ class FuzzyClustering():
                           )
                      for i in range(self.n_clusters)
                      ]
-        if max([sum(i) for i in close_set]) == 1:  # No centroid fusion.
+        if max([len(i) for i in close_set]) == 1:  # No centroid fusion.
             return False
         else:
             # Fuse list of cluster clusters with common elements.
@@ -423,6 +420,8 @@ def classification(dataset, p, nc, algo,
         A 100-element list containing the final states of the FCM
         realisations.
     """
+    rng=random.Random()
+    rng.seed(seed)
     if p < algo.min_fuzzifier or p > algo.max_fuzzifier:
         raise ValueError('Fuzzifier out of range')
     if err_bis:  # If stop iteration decided from cluster displacement.
@@ -430,7 +429,7 @@ def classification(dataset, p, nc, algo,
     FC_list = [None] * 100
     for n in range(100):
         FC = algo(dataset, p, nc)
-        FC.initiate_clusters(seed)
+        FC.initiate_clusters(rng)
         FC.calculate_memberships()
         FC.evaluate_objective_function()
         stopiter = err + 1
