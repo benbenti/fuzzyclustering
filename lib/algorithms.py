@@ -1,5 +1,5 @@
 """
-This module implements several version of the fuzzy c-means (FCM)
+This module implements the basic version of the fuzzy c-means (FCM)
 classification algorithm.
 -----------------------------------------------------------------------
 The FCM defines a number of clusters, and gives each sample a
@@ -8,13 +8,7 @@ Clusters are initiated randomly, then the algorithm iteratively uses
 membership scores to update the position of cluster centroids, and the
 position of cluster centroids to update membership scores.
 
-This module implements four versions of the FCM algorithm:
-- the classical algorithm
-- the algorithm with a polynomial fuzzifier function  (in progress)
-- the algorithm with Shannon entropy-based membership regularisation (in progress)
-- the algorithm with quadratic entropy-based membership regularisation.(in progress)
-
-Ths module propose three methods to evaluate clustering quality:
+This module propose three methods to evaluate clustering quality:
 - the objective function of the FCM (cluster compactness)
 - the VIdso index (cluster dispersion, separation, and overlap)
 - the generalised intra-inter silhouette (cluster compactness and
@@ -23,9 +17,6 @@ Ths module propose three methods to evaluate clustering quality:
 CLASSES
 -------
 FuzzyClustering
-FuzzyClusteringPoly (in progress)
-FuzzyClusteringRegulSh (in progress)
-FuzzyClusteringRegulQuad (in progress)
 -----------------------------------------------------------------------
 FUNCTIONS
 ---------
@@ -39,6 +30,7 @@ import numpy as np
 import random
 import math
 import itertools
+
 
 class FuzzyClustering():
     """
@@ -183,7 +175,7 @@ class FuzzyClustering():
                                         ]
                                        for i in range(self.n_clusters)
                                        ]
-                                       )
+                                      )
                              )
 
     def calculate_memberships(self):
@@ -198,7 +190,7 @@ class FuzzyClustering():
                       for i in self.data
                       ]
                      )
-        common_term = np.sum(d ** (2/(1-self.fuzzifier)), axis=1)
+        common_term = np.sum(d ** (2/(1-self.fuzzifier-1)), axis=1)
         tmp = np.array([common_term[i] * d[i] ** (2/(self.fuzzifier-1))
                         for i in range(self.n_samples)
                         ]
@@ -254,49 +246,57 @@ class FuzzyClustering():
     def fuse_centroids(self, d_th=None):
         """
         Fuses cluster centroids closer than the fusion threshold.
-        By default, the fusion threshold corresponds to .01 % of the range of
+        By default, the fusion threshold corresponds to 0.01 % of the range of
         every feature in the dataset.
         """
 
         if d_th is None:
-            d_th = 0.0001 * np.sum((np.max(self.data, axis=0) - np.min(self.data, axis=0)) ** 2) ** 1/2
+            d_th = 0.0001 * np.sum(np.abs(np.max(self.data, axis=0) -
+                                          np.min(self.data, axis=0)
+                                          )
+                                   )
 
-        cluster_distance = np.array([[euclidian_distance(c1, c2)
-                                      for c1 in self.clusters[-1]
-                                      ]
-                                     for c2 in self.clusters[-1]
-                                     ]
-                                     )
-
-        close_cluster = (cluster_distance <= d_th)
+        cluster_dist = np.array([[euclidian_distance(c1, c2)
+                                  for c1 in self.clusters[-1]
+                                  ]
+                                 for c2 in self.clusters[-1]
+                                 ]
+                                )
+        close_cluster = (cluster_dist <= d_th)
         # Make lists of clusters close from each cluster.
         close_set = [list(set([j for j in range(self.n_clusters)
-                                if close_cluster[i,j]
-                                ]
-                                )
-                           )
-                       for i in range(self.n_clusters)
-                       ]
-
-        if max([sum(i) for i in close_set]) > 1: # Centroid fusion.
-            # Fuse sets with common elements.
+                               if close_cluster[i, j]
+                               ]
+                              )
+                          )
+                     for i in range(self.n_clusters)
+                     ]
+        if max([sum(i) for i in close_set]) == 1:  # No centroid fusion.
+            return False
+        else:
+            # Fuse list of cluster clusters with common elements.
             for i, elt in enumerate(close_set):
                 for j, lst in enumerate(close_set):
-                     if any(k in elt for k in lst):
-                         elt += [k for k in lst if k not in elt]
+                    if any(k in elt for k in lst):
+                        elt += [k for k in lst if k not in elt]
                 elt.sort()
             # Keep unique sets.
-            fusion_index = [tuple(close_set[0])]
-            for i in close_set:
-                if tuple(i) not in fusion_index:
-                    fusion_index.append(tuple(i))
-            # Calculate new clusters (mean of close clusters)
-            ct = np.empty(shape=(len(fusion_index), self.data.shape[1]))
-            for i, elt in enumerate(fusion_index):
-                ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
-            # Replace clusters with fused clusters.
-            self.clusters.append(ct)
-            self.n_clusters = ct.shape[0]
+            close_set_unique = []
+            for elt in close_set:
+                if elt not in close_set_unique:
+                    close_set_unique.append(elt)
+            # Compute new cluster (mean of close clusters)
+            new_ct = np.empty(shape=(len(close_set_unique),
+                                     self.data.shape[1]
+                                     )
+                              )
+            for i, elt in enumerate(close_set_unique):
+                new_ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
+            # Append new cluster table in FuzzyClustering instance
+            # and update cluster number.
+            self.clusters.append(new_ct)
+            self.n_clusters = new_ct.shape[0]
+        return True
 
     def VIdso(self):
         """
@@ -385,304 +385,8 @@ class FuzzyClustering():
         self.cluster_quality = s
 
 
-class FuzzyClusteringPoly(FuzzyClustering):
-    """
-    FuzzyClusteringPoly(dataset, p, nc)
-
-    A FuzzyClusteringPoly object summarises a fuzzy c-means
-    classification, with polynomial fuzzifer function.
-    It works like a FuzzyClustering object, storing the dataset,
-    performing the algorithm basic steps, and storing the resulting
-    partition.
-
-    Notes
-    -----
-    The polynomial fuzzifier function creates an area of crisp
-    clustering around cluster centroids.
-    The fuzzifier parameter must be between 0 and 1.
-
-    Parameters
-    ----------
-    dataset (2d array)
-        The dataset to classify. Samples in row, features in columns.
-    p (float)
-        Value of the fuzzifier.
-    nc (integer)
-        Number of clusters.
-
-    Attributes
-    ----------
-    Inherited from FuzzyClustering class.
-
-    Methods
-    -------
-    _f
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-    calculate_memberships
-        Calculates the membership scores from the distances between
-        data points and cluster centroids, and fuzzifier value.
-    """
-    min_fuzzifier = 0
-    max_fuzzifier = 1
-
-    def _f(self):
-        """
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-        """
-        p = self.fuzzifier
-        return (((1 - p) / (1 + p)) * self.memberships ** 2
-                + (2 * p / (1 + p)) * self.memberships
-                )
-
-    def calculate_memberships(self):
-        """
-        Calculates membership scores from the distances between samples
-        and cluster centroids, and fuzzifier value.
-
-        Notes
-        -----
-        The polynomial fuzzifier function creates areas of crisp
-        clustering around cluster centroids. Some membership scores may
-        tend to 0 as a result. They need to be accounted for.
-        """
-        ct = self.clusters[-1]
-        p = self.fuzzifier
-        d = np.array([[euclidian_distance(i, c)
-                       for c in ct
-                       ]
-                      for i in self.data
-                      ]
-                     )
-        mb = np.zeros(shape=(self.n_samples, self.n_clusters))
-        for i in range(self.n_samples):
-            # Determine which clusters have non-vanishing membership scores.
-            sort_idx = np.argsort(d[i])
-            vals = d[i, sort_idx] ** (-2)
-            refs = [p/(1 + p*k) * np.sum(d[i, sort_idx[:k+1]] ** (-2))
-                    for k in range(self.n_clusters)
-                    ]
-            comps = [a - b for a, b in zip(vals, refs)]
-            lst = [idx for idx, val in enumerate(comps) if val > 0]
-            ct_i = max(lst)  # Most distant cluster with non-vanishing score.
-            # Get membership scores.
-            mb_prime = d[i] ** (-2) - refs[ct_i]
-            null_idx = [k for k in range(self.n_clusters)
-                        if mb_prime[k] < 0
-                        ]
-            mb_prime[null_idx] = 0
-            mb[i] = [mb_prime[k] / sum(mb_prime)
-                     for k in range(self.n_clusters)
-                     ]
-        # Correct scores to prevent the accumulation of
-        # floating point operation errors
-        for i in range(self.n_samples):
-            mb[i] /= sum(mb[i])
-        self.memberships = mb
-
-
-class FuzzyClusteringRegulSh(FuzzyClustering):
-    """
-    FuzzyClusteringRegulSh(dataset, p, nc)
-
-    A FuzzyClusteringRegulSh object summarises a fuzzy c-means
-    classification, with membership regularisation based on Shannon
-    entropy.
-    It works like a FuzzyClustering object, storing the dataset,
-    performing the alogorithm basic steps, and storing the resulting
-    partition.
-
-    Notes
-    -----
-    Instead of using the fuzzifier to soften the classification,
-    membership regularisation adds an entropy term to the objective
-    function to draw the partition away from crisp clustering.
-    Shannon entropy always results in a graded clustering.
-    The fuzzifier parameter must be larger than 0.
-
-    Parameters
-    ----------
-    dataset (2d array)
-        The dataset to classify. Samples in row, features in columns.
-    p (float)
-        Value of the fuzzifier.
-    nc (integer)
-        Number of clusters.
-
-    Attributes
-    ----------
-    Inherited from FuzzyClustering class.
-
-    Methods
-    -------
-    _f
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-    _g
-        Entropy term used to evaluate the objective function.
-    calculate_memberships
-        Calculates the membership scores from the distances between
-        data points and cluster centroids, and fuzzifier value.
-    """
-    min_fuzzifier = 0
-
-    def _f(self):
-        """
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-        """
-        return self.memberships
-
-    def _g(self):
-        """
-        Entropy term used to evaluate the objective function.
-        """
-        # Shannon entropy always result in graded partitions.
-        # The entropy term gives nans if a membership score equals 0.
-        return self.fuzzifier * self.memberships * np.log(self.memberships)
-
-    def calculate_memberships(self):
-        """
-        Calculates membership scores from the distances between samples
-        and cluster centroids, and fuzzifier value.
-
-        WARNING: if the spread of the dataset is too large, the exp
-        returns 0 and all membership scores are nan.
-        Threshold for issue is -d[s]**2/2 ~= 30.
-        """
-
-        ct = self.clusters[-1]
-        p = self.fuzzifier
-        d = np.array([[euclidian_distance(i, c)
-                       for c in ct
-                       ]
-                      for i in self.data
-                      ]
-                     )
-        S = 1 / np.sum(np.exp(-d ** 2 / p), axis=1)
-        mb = np.array([S[i] * np.exp(-d[i] ** 2 / p)
-                       for i in range(self.n_samples)
-                       ]
-                      )
-        # Correct scores to prevent the accumulation of
-        # floating point operation errors
-        for i in range(self.n_samples):
-            mb[i] /= sum(mb[i])
-        self.memberships = mb
-
-
-class FuzzyClusteringRegulQuad(FuzzyClustering):
-    """
-    FuzzyClusteringRegulQuad(dataset, p, nc)
-
-    A FuzzyClusteringRegulQuad object summarises a fuzzy c-means
-    classification, with membership regularisation based on quadratic
-    entropy.
-    It works like a FuzzyClustering object, storing the dataset,
-    performing the alogorithm basic steps, and storing the resulting
-    partition.
-
-    Notes
-    -----
-    The quadratic entropy FCM may create null membership scores.
-    The fuzzifier parameter must be larger than 0.
-
-    Parameters
-    ----------
-    dataset (2d array)
-        The dataset to classify. Samples in row, features in columns.
-    p (float)
-        Value of the fuzzifier.
-    nc (integer)
-        Number of clusters.
-
-    Attributes
-    ----------
-    Inherited from FuzzyClustering class.
-
-    Methods
-    -------
-    _f
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-    _g
-        Entropy term used to evaluate the objective function.
-    calculate_memberships
-        Calculates the membership scores from the distances between
-        data points and cluster centroids, and fuzzifier value.
-    """
-    min_fuzzifier = 0
-
-    def _f(self):
-        """
-        Membership score modification function (fuzzification function)
-        used to evaluate the objective function and update the position
-        of cluster centroids.
-        """
-        return self.memberships
-
-    def _g(self):
-        """
-        Entropy term used to evaluate the objective function.
-        """
-        return self.fuzzifier * self.memberships ** 2
-
-    def calculate_memberships(self):
-        """
-        Calculates membership scores from the distances between samples
-        and cluster centroids, and fuzzifier value.
-
-        Notes
-        -----
-        The quadratic entropy membership regularisation creates
-        vanishing membership scores, that need to be accounted for.
-        """
-        ct = self.clusters[-1]
-        p = self.fuzzifier
-        d = np.array([[euclidian_distance(i, c)
-                       for c in ct
-                       ]
-                       for i in self.data
-                      ]
-                     )
-        mb = np.zeros(shape=(self.n_samples, self.n_clusters))
-        for i in range(self.n_samples):
-            # Find clusters with non-vanishing membership scores.
-            sort_idx = np.argsort(d[i])
-            vals = [np.sum(d[i, sort_idx[:k+1]] ** 2)
-                    for k in range(self.n_clusters)
-                    ]
-            refs = [(k + 1) * d[i, sort_idx[k]] - 2 * p
-                    for k in range(self.n_clusters)
-                    ]
-            comps = [a - b for a, b in zip(vals, refs)]
-            lst = [idx for idx, val in enumerate(comps) if val > 0]
-            c_i = max(lst)  # Most distant cluster with non-vanishing score.
-            # Get membership scores.
-            mb[i] = ((1 / c_i)
-                     * (1 + np.sum(d[i, sort_idx[:c_i+1]]**2))
-                     / (2 * p)
-                     - d[i] / (2 * p)
-                     )
-            null_idx = [k for k in range(self.n_clusters)
-                        if mb[i, k] < 0
-                        ]
-            mb[i, null_idx] = 0
-        # Correct scores to prevent the accumulation of
-        # floating point operation errors
-        for i in range(self.n_samples):
-            mb[i] /= sum(mb[i])
-        self.memberships = mb
-
-
 def classification(dataset, p, nc, algo,
-                   itermax, err, err_bis=None, seed=None):
+                   itermax, err, err_bis=None, seed=None, verbose=0):
     """
     Runs the fuzzy c-means algorithm for a pair of fuzzifier value and
     number of clusters. Makes 100 realisations of the algorithms with
@@ -720,25 +424,37 @@ def classification(dataset, p, nc, algo,
         realisations.
     """
     if p < algo.min_fuzzifier or p > algo.max_fuzzifier:
-        raise ValueError('Fuzzifier values must be within [{},{}]'.format(algo.min_fuzzifier, algo.max_fuzzifier))
+        raise ValueError('Fuzzifier out of range')
+    if err_bis:  # If stop iteration decided from cluster displacement.
+        err = err_bis
     FC_list = [None] * 100
     for n in range(100):
         FC = algo(dataset, p, nc)
         FC.initiate_clusters(seed)
         FC.calculate_memberships()
         FC.evaluate_objective_function()
-        if err_bis:
-            err = err_bis
         stopiter = err + 1
         n_loops = 0
         while stopiter >= err and n_loops <= itermax:
             FC.update_clusters()
+            fused = FC.fuse_centroids()
+            if fused and verbose == 2:
+                print('Cluster fusion!')
             FC.calculate_memberships()
             FC.evaluate_objective_function()
-            if not err_bis:
+            if verbose == 2:
+                print('Objective function = {}'.format(FC.obj_function[-1]))
+            if fused:  # If fusion skip stopiter check and loop count.
+                continue
+            if not err_bis:  # Assess diminution of objective function.
                 stopiter = FC.obj_function[-2] - FC.obj_function[-1]
-            else:
-                stopiter = np.min(abs(FC.clusters[-1] - FC.clusters[-2]))
+            else:  # Assess displacement of fuzzy clusters.
+                stopiter = max([euclidian_distance(FC.clusters[-1][k],
+                                                   FC.clusters[-2][k]
+                                                   )
+                                for k in range(FC.n_clusters)
+                                ]
+                               )
             n_loops += 1
         FC_list[n] = FC
     return FC_list
@@ -768,13 +484,14 @@ def compare_quality(lst, q_method=None):
         quality order.
     """
     if lst[0].cluster_quality is None:  # No computed quality yet.
-        if q_method is None:  ## Uses the objective funtion.
+        if q_method is None:  # Uses the objective funtion.
             for elt in lst:
                 elt.cluster_quality = elt.obj_function[-1]
         else:  # Runs q_method.
-            _ = [q_method(elt) for elt in lst]
+            for elt in lst:
+                q_method(elt)
 
-    if isinstance(lst[0].cluster_quality, np.float):  # Uses the objective function.
+    if isinstance(lst[0].cluster_quality, np.float):  # Objective function.
         quality = [elt.cluster_quality for elt in lst]
     elif len(lst[0].cluster_quality) == 3:  # Uses the VIdso index.
         disp = [elt.cluster_quality[0] for elt in lst]
@@ -783,8 +500,9 @@ def compare_quality(lst, q_method=None):
         quality = [(d / max(disp) + o / max(ovlp)) / (s / max(sep))
                    for d, o, s in zip(disp, ovlp, sep)
                    ]
-    elif len(lst[0].cluster_quality == lst[0].n_samples):  # Uses the intra-inter silhouette.
+    elif len(lst[0].cluster_quality == lst[0].n_samples):  # Silhouette.
         quality = [np.mean(elt.cluster_quality) for elt in lst]
+    # Sort clustering realisations according to quality
     sorted_lst = sorted(range(len(quality)), key=quality.__getitem__)
     return quality, sorted_lst
 
@@ -831,9 +549,10 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
         Method for the evaluation of clustering quality. FC.VIdso() or
         FC.intrainter_silhouette().
         Default is None and use the value of the objective function.
-    verbose (boolean):
-        Amount of verbal information to display.
-        Default is 1 and prints algorithm advancement messages.
+    verbose (int):
+        Amount of verbal information to display. 0 displays no info.
+        1 (default) prints a message when a (fuzzifier, n_cluster) loop is
+        done. 2 additionally prints successive objective function values.
 
     Returns
     -------
@@ -848,42 +567,25 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
     cd1 = fuzz_range[0] < algo.min_fuzzifier
     cd2 = fuzz_range[1] > algo.max_fuzzifier
     if cd1 or cd2:
-        raise ValueError('Fuzzifier values must be within [{},{}]'.format(algo.min_fuzzifier, algo.max_fuzzifier))
+        raise ValueError('Fuzzifier out of range')
     clustering_solution = {}
     if err_bis:
         err = err_bis
-    for p in np.arange(fuzz_range[0], fuzz_range[1], step):
+    for p in np.arange(fuzz_range[1], fuzz_range[0], -step):
         clustering_solution[round(p, 2)] = {}
         for k in range(2, nc_max+1):
-            results = [None]*100
-            for n in range(100):
-                FC = algo(dataset, p, k)
-                FC.initiate_clusters(seed)
-                FC.calculate_memberships()
-                FC.evaluate_objective_function()
-                stopiter = err + 1
-                n_loops = 0
-                while stopiter >= err and n_loops <= itermax:
-                    FC.update_clusters()
-                    FC.fuse_centroids()
-                    FC.calculate_memberships()
-                    FC.evaluate_objective_function()
-                    if (FC.clusters[-1].shape != FC.clusters[-2].shape): # If fusion, skip stopiter assessment and loop count.
-                        continue
-                    if not err_bis:
-                        stopiter = FC.obj_function[-2] - FC.obj_function[-1]
-                    else:
-                        for c1 in FC.clusters[-1]:
-                            for c2 in FC.clusters[-2]:
-                                diff = euclidian_distance(c1, c2)
-                                if diff <= stopiter and diff != 0:
-                                    stopiter = diff
-                    n_loops += 1
-                results[n] = FC
+            # Make 100 runs of the algorithm.
+            results = classification(dataset, p, k, algo,
+                                     itermax, err, err_bis, seed, verbose
+                                     )
+            # Compare quality and keep best clustering solution.
             q, idx = compare_quality(results, q_method)
             clustering_solution[round(p, 2)][k] = results[idx[0]]
             if verbose:
-                print('Fuzzifier {} and {} clusters: done!'.format(round(p, 2), k))
+                print('Fuzzifier {} and {} clusters: done'.format(round(p, 2),
+                                                                  k
+                                                                  )
+                      )
     return clustering_solution
 
 

@@ -46,7 +46,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
 import matplotlib.transforms as transforms
-import matplotlib.lines as lines
 import lib.algorithms as al
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -149,10 +148,15 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
 
     # Identify the best clustering solution for each value of fuzzifier.
     for i, p in enumerate(dict_FC.keys()):
-        lst_FC = [dict_FC[p][key] for key in dict_FC[p].keys()]  # Same fuzzifier, different number of clusters.
-        quality, idx = al.compare_quality(lst_FC)  # Uses the same quality index as the fuzzy c-means process.
+        lst_FC = [dict_FC[p][key] for key in dict_FC[p].keys()]
+        # Same fuzzifier, different number of clusters.
+        quality, idx = al.compare_quality(lst_FC)
+        # Uses the same quality index as the fuzzy c-means process.
         best = lst_FC[idx[0]]  # Best fuzzy partition.
-        stable_solutions[i] = [p, list(dict_FC[p].keys())[idx[0]], best.n_clusters, quality[idx[0]]]
+        stable_solutions[i] = [p, list(dict_FC[p].keys())[idx[0]],
+                               best.n_clusters,
+                               quality[idx[0]]
+                               ]
 
     # Plot the optimal number of clusters relative to the fuzzifier value.
     fig, ax = plt.subplots(figsize=(8, 8))
@@ -203,7 +207,7 @@ def harmonise_cluster_order(FC, nclust):
     # Get main cluster (highest membership score) for all realisations
     keys1 = list(FC.keys())
     keys2 = list(FC[keys1[0]].keys())
-    nsamples = FC[keys1[0]][keys2[0]].data.shape[0]  # dataset stored in FuzzyClustering objects.
+    nsamples = FC[keys1[0]][keys2[0]].n_samples
     mc = np.zeros(shape=(nsamples, len(pk)), dtype=float)
     for (i, (p, k)) in enumerate(pk):
         typ = typicality(FC[p][k])
@@ -227,7 +231,7 @@ def harmonise_cluster_order(FC, nclust):
     flag = False
     for lst in order:
         s = set(lst)
-        if len(s)!=len(lst): # cluster duplication!
+        if len(s) != len(lst):  # cluster duplication!
             flag = True
 
     if not flag:
@@ -313,7 +317,6 @@ def plot_typicality(FC, grouping=None, colour_set=None,
     category and categories are stacked.
     """
 
-    mb = FC.memberships
     typ = typicality(FC)
     if grouping is None:  # Use cluster with highest score to colour samples.
         grouping = typ[:, 1]
@@ -325,9 +328,10 @@ def plot_typicality(FC, grouping=None, colour_set=None,
                for group in set(grouping)
                ]
     if colour_set is None:
-        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
-                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
-                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
+                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
+                               "#6db6ff", "#b6dbff", "#920000", "#924900",
+                               "#db6d00", "#24ff24", "#ffff6d"
                                ]
                               )
     if not fig and not ax:
@@ -377,7 +381,8 @@ def triangular_gradation_plots(FC, c1, c2,
     show_plot (boolean)
         Whether to show the plot or not. Default is True and shows the plot.
     lgd (bool)
-        Whether to label the axes on the plot. Default is True and show the labels
+        Whether to label the axes on the plot.
+        Default is True and show the labels
     fileName (path)
         Where to save the figure. Default is None and does not save
         the figure.
@@ -393,8 +398,8 @@ def triangular_gradation_plots(FC, c1, c2,
     # Get main cluster for colouring.
     main_cluster = np.argmax(FC.memberships, axis=1)
     second_cluster = np.argsort(FC.memberships, axis=1)[:, -2]
-    c1_ind = main_cluster==c1  # Colour 1
-    c2_ind = main_cluster==c2  # Colour 2
+    c1_ind = main_cluster == c1  # Colour 1
+    c2_ind = main_cluster == c2  # Colour 2
     if restrict:  # Select samples which main clusters are c1 and c2.
         ind = [i for i, elt in enumerate(zip(main_cluster, second_cluster))
                if c1 in elt and c2 in elt
@@ -414,7 +419,7 @@ def triangular_gradation_plots(FC, c1, c2,
         x_mb_c2 = FC.memberships[c2_ind, c1]
         y_mb_c2 = FC.memberships[c2_ind, c2]
         # Prepare a third colour for remaining samples.
-        others = [not(a or b) for a, b in zip(c1_ind, c2_ind)]
+        others = [not (a or b) for a, b in zip(c1_ind, c2_ind)]
         x_mb_oth = FC.memberships[others, c1]
         y_mb_oth = FC.memberships[others, c2]
     if not fig and not ax:
@@ -517,8 +522,8 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     FC (FuzzyClustering instance):
         Contains the dataset and the fuzzy partition of the data.
     grouping (list):
-        The grouping categories to plot the confidence ellipses. Default is None
-        and uses the fuzzy clusters.
+        The grouping categories to plot the confidence ellipses.
+        Default is None and uses the fuzzy clusters.
     n_std (integer):
         The number of standard deviations to use in the ellipses.
         1 corresponds roughly to a 68% confidence interval.
@@ -552,14 +557,16 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
 
     Notes:
     ------
-    This function uses code from https://carstenschelp.github.io/2018/09/14/Plot_Confidence_Ellipse_001.html
-    The figures given for the confidence interval do not account for
-    covariance. A larger number of outliers should be expected.
+    This function uses code from "https://carstenschelp.github.io/2018/09/14/
+    Plot_Confidence_Ellipse_001.html". The figures given for the confidence
+    interval do not account for covariance.
+    A larger number of outliers should be expected.
     """
     if colour_set is None:  # Default colour palette.
-        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
-                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
-                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
+                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
+                               "#6db6ff", "#b6dbff", "#920000", "#924900",
+                               "#db6d00", "#24ff24", "#ffff6d"
                                ]
                               )
     if grouping is None:  # Uses the fuzzy clusters.
@@ -570,9 +577,9 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     # Make the plot.
     if not fig and not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(1,1,1)
+        ax = fig.add_subplot(1, 1, 1)
     for i, grp in enumerate(sorted(list(set(grouping)))):
-        idx = [j for j, elt in enumerate(grouping) if elt==grp]
+        idx = [j for j, elt in enumerate(grouping) if elt == grp]
         x = princ_comp[idx, 0]
         y = princ_comp[idx, 1]
         if len(x) > 0:  # Make scatter plot.
@@ -596,14 +603,20 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
             scale_y = np.sqrt(cov[1, 1]) * n_std
             # Rotate and scale the ellipse.
             transf = transforms.Affine2D() \
-                     .rotate_deg(45) \
-                     .scale(scale_x, scale_y) \
-                     .translate(np.mean(x), np.mean(y))
+                .rotate_deg(45) \
+                .scale(scale_x, scale_y) \
+                .translate(np.mean(x), np.mean(y))
             ellipse.set_transform(transf + ax.transData)
             ax.add_patch(ellipse)
-    plt.legend(ax.patches, sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_xlabel('1st principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[0])))
-    ax.set_ylabel('2nd principal component - {}% of variance'.format(int(100*pca.explained_variance_ratio_[1])))
+    plt.legend(ax.patches, sorted(list(set(grouping))),
+               bbox_to_anchor=(1.05, 1), loc='upper left'
+               )
+    ax.set_xlabel('1st principal component - {}% of variance'.format(
+                  int(100*pca.explained_variance_ratio_[0]))
+                  )
+    ax.set_ylabel('2nd principal component - {}% of variance'.format(
+                  int(100*pca.explained_variance_ratio_[1]))
+                  )
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
     if show_plot:
@@ -667,9 +680,10 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
     complete view of the dataset.
     """
     if colour_set is None:
-        colour_set = np.array(["#000000","#004949","#009292","#ff6db6","#ffb6db",
-                               "#490092","#006ddb","#b66dff","#6db6ff","#b6dbff",
-                               "#920000","#924900","#db6d00","#24ff24","#ffff6d"
+        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
+                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
+                               "#6db6ff", "#b6dbff", "#920000", "#924900",
+                               "#db6d00", "#24ff24", "#ffff6d"
                                ]
                               )
     if grouping is None:  # Uses the fuzzy clusters.
@@ -683,11 +697,11 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
     plot_data = tsne.fit_transform(tsne_data)
     fig, ax = plt.subplots(figsize=(8, 8))
     for i, grp in enumerate(sorted(list(set(grouping)))):
-        x = plot_data[grouping==grp, 0]
-        y = plot_data[grouping==grp, 1]
-        if len(x)>0:
+        x = plot_data[grouping == grp, 0]
+        y = plot_data[grouping == grp, 1]
+        if len(x) > 0:
             ax.scatter(x, y, c=colour_set[i], marker='+')
-        if len(x)>2:  # Draw confidence ellipse.
+        if len(x) > 2:  # Draw confidence ellipse.
             cov = np.cov(x, y)
             pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
             # Get the ellipse radius.
@@ -711,7 +725,10 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
                                .translate(np.mean(x), np.mean(y))
             ellipse.set_transform(transf + ax.transData)
             ax.add_patch(ellipse)
-    plt.legend(sorted(list(set(grouping))), bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.legend(sorted(list(set(grouping))),
+               bbox_to_anchor=(1.05, 1),
+               loc='upper left'
+               )
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
     # plt.show()
