@@ -110,6 +110,7 @@ class FuzzyClustering():
     intrainter_silhouette
         Computes the generalised intra-inter silhouette.
     """
+    # Range of accepted fuzziness values
     min_fuzzifier = 1
     max_fuzzifier = np.inf
 
@@ -240,59 +241,65 @@ class FuzzyClustering():
         tmp2 = np.sum(g_mb)
         self.obj_function.append(tmp1 + tmp2)
 
-    def fuse_centroids(self, d_th=None):
+    def fuse_centroids(self):
         """
         Fuses cluster centroids closer than the fusion threshold.
-        By default, the fusion threshold corresponds to 0.01 % of the range of
-        every feature in the dataset.
+        By default, the fusion threshold corresponds to 0.1 % of the range of
+        each feature in the dataset.
         """
 
-        if d_th is None:
-            d_th = 0.0001 * np.sum(np.abs(np.max(self.data, axis=0) -
-                                          np.min(self.data, axis=0)
-                                          )
-                                   )
+        ct = self.clusters[-1]
+        close_clusters = np.zeros(shape=(self.n_clusters, self.n_clusters))
+        # Set threshold for cluster fusion.
+        d_th = 0.01  # 0.1% of the range in every feature.
+        feat_range = np.max(self.data, axis=0) - np.min(self.data, axis=0)
+        threshold = d_th * feat_range
+        for i in range(self.n_clusters):
+            close_clusters[i, i] = 1
+        for i, j in itertools.permutations(range(self.n_clusters), 2):
+            diff = np.abs(ct[i, :] - ct[j, :])
+            if (diff <= threshold).all():  # Clusters are close.
+                close_clusters[i, j] = 1
+                close_clusters[j, i] = 1
 
-        cluster_dist = np.array([[euclidian_distance(c1, c2)
-                                  for c1 in self.clusters[-1]
-                                  ]
-                                 for c2 in self.clusters[-1]
-                                 ]
-                                )
-        close_cluster = (cluster_dist <= d_th)
+        # If no close clusters, return FC as is.
+        if max(np.sum(close_clusters, axis=0)) == 1:
+            return False
+
         # Make lists of clusters close from each cluster.
         close_set = [list(set([j for j in range(self.n_clusters)
-                               if close_cluster[i, j]
+                               if close_clusters[i, j]
                                ]
                               )
                           )
                      for i in range(self.n_clusters)
                      ]
-        if max([len(i) for i in close_set]) == 1:  # No centroid fusion.
-            return False
-        else:
-            # Fuse list of cluster clusters with common elements.
-            for i, elt in enumerate(close_set):
-                for j, lst in enumerate(close_set):
-                    if any(k in elt for k in lst):
-                        elt += [k for k in lst if k not in elt]
-                elt.sort()
-            # Keep unique sets.
-            close_set_unique = []
-            for elt in close_set:
-                if elt not in close_set_unique:
-                    close_set_unique.append(elt)
-            # Compute new cluster (mean of close clusters)
-            new_ct = np.empty(shape=(len(close_set_unique),
-                                     self.data.shape[1]
-                                     )
-                              )
-            for i, elt in enumerate(close_set_unique):
-                new_ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
-            # Append new cluster table in FuzzyClustering instance
-            # and update cluster number.
-            self.clusters.append(new_ct)
-            self.n_clusters = new_ct.shape[0]
+
+        # Fuse lists of cluster clusters with common elements.
+        for i, elt in enumerate(close_set):
+            for j, lst in enumerate(close_set):
+                if any(k in elt for k in lst):
+                    elt += [k for k in lst if k not in elt]
+            elt.sort()
+
+        # Remove duplicates.
+        close_set_unique = []
+        for elt in close_set:
+            if elt not in close_set_unique:
+                close_set_unique.append(elt)
+
+        # Compute new cluster (mean of close clusters)
+        new_ct = np.empty(shape=(len(close_set_unique),
+                                 self.data.shape[1]
+                                 )
+                          )
+        for i, elt in enumerate(close_set_unique):
+            new_ct[i] = np.mean(self.clusters[-1][elt, :], axis=0)
+
+        # Append new cluster table in FuzzyClustering instance
+        # and update cluster number.
+        self.clusters.append(new_ct)
+        self.n_clusters = new_ct.shape[0]
         return True
 
     def VIdso(self):
@@ -306,32 +313,31 @@ class FuzzyClustering():
         # over the dispersion around the center of gravity of the dataset.
         # Cluster centroids with many points concentrated around them have
         # lower values than cluster centroids with few points around.
-        cv_data = np.std(self.data, axis=0) / abs(np.mean(self.data, axis=0))
-        cv_c = np.zeros(shape=(self.n_clusters,))
+        cv_data = np.std(self.data, axis=0) / np.abs(np.mean(self.data, axis=0))
+        cv_c = np.zeros(shape=(self.n_clusters, self.data.shape[1]))
         for k in range(self.n_clusters):
-            sigma_c = np.sqrt(1/self.n_samples
-                              * np.sum((self.data - ct[k]) ** 2,
-                                       axis=0
-                                       )
-                              )
-            cv_c[k] = np.max(np.multiply(sigma_c, abs(ct[k])**(-1)))
+            num = np.sum([mb[i, k] * (self.data[i] - ct[k]) ** 2
+                          for i in range(self.n_samples)
+                          ], axis=0)
+            denom = np.sum(mb[:, k])
+            cv_c[k] = np.sqrt(num / denom)
         disp = np.max(cv_c) / np.max(cv_data)
         # Separation and overlap indices. Minimal distance between clusters,
         # measured as the highest non-dominant membership scores between each
         # pair of clusters (separation).
         S = np.zeros(shape=(self.n_clusters, self.n_clusters))
-        Ov = np.zeros(shape=S.shape)
+        Ov = np.zeros(shape=(self.n_clusters, self.n_clusters))
         for c1, c2 in itertools.combinations(range(self.n_clusters), 2):
-            c_max = np.max(mb[:, [c1, c2]], axis=1)  # Dominant membership.
-            c_min = np.min(mb[:, [c1, c2]], axis=1)  # Dominee membership.
+            mb_max = np.max(mb[:, [c1, c2]], axis=1)  # Dominant membership.
+            mb_min = np.min(mb[:, [c1, c2]], axis=1)  # Dominee membership.
             # Similarity between clusters = highest non-dominant score.
-            S[c1, c2] = np.max(c_min)
+            S[c1, c2] = np.max(mb_min)
             # Overlap quantification for a data point. Decreases with
             # dominant membership score.
-            R = -2 * c_max + 2
+            R = -2 * mb_max + 2
             # No overlap if complete membership or null membership.
             idx_mb = [i for i in range(self.n_samples)
-                      if (c_max[i] == 1 or c_min[i] == 0)
+                      if (mb_max[i] == 1 or mb_min[i] == 0)
                       ]
             R[idx_mb] = 0
             # Overlap cannot be higher than 1.
@@ -383,7 +389,7 @@ class FuzzyClustering():
 
 
 def classification(dataset, p, nc, algo,
-                   itermax, err, err_bis=None, seed=None, verbose=0):
+                   itermax, err, rng):
     """
     Runs the fuzzy c-means algorithm for a pair of fuzzifier value and
     number of clusters. Makes 100 realisations of the algorithms with
@@ -407,25 +413,17 @@ def classification(dataset, p, nc, algo,
     err (float)
         Minimum improvement of the objective function to continue the
         iterations.
-    err_bis (float)
-        Minimum difference in consecutive cluster centroid positions to
-        continue the iteration.
-        Default is None. If given, overrides err
-    seed (integer, float, byte, or bytearray)
-        Seed of the random number generator used to initiate random
-        clusters.
+    rng (random.Random instance):
+        A random number generator for cluster initialisation.
+
     Returns
     -------
     FC_list (list)
         A 100-element list containing the final states of the FCM
         realisations.
     """
-    rng=random.Random()
-    rng.seed(seed)
     if p < algo.min_fuzzifier or p > algo.max_fuzzifier:
         raise ValueError('Fuzzifier out of range')
-    if err_bis:  # If stop iteration decided from cluster displacement.
-        err = err_bis
     FC_list = [None] * 100
     for n in range(100):
         FC = algo(dataset, p, nc)
@@ -434,28 +432,24 @@ def classification(dataset, p, nc, algo,
         FC.evaluate_objective_function()
         stopiter = err + 1
         n_loops = 0
-        while stopiter >= err and n_loops <= itermax:
+        # Run iterative process until convergence.
+        while stopiter >= err and n_loops <= itermax:  # Iterative process.
             FC.update_clusters()
-            fused = FC.fuse_centroids()
-            if fused and verbose == 2:
-                print('Cluster fusion!')
             FC.calculate_memberships()
             FC.evaluate_objective_function()
-            if verbose == 2:
-                print('Objective function = {}'.format(FC.obj_function[-1]))
-            if fused:  # If fusion skip stopiter check and loop count.
-                continue
-            if not err_bis:  # Assess diminution of objective function.
-                stopiter = FC.obj_function[-2] - FC.obj_function[-1]
-            else:  # Assess displacement of fuzzy clusters.
-                stopiter = max([euclidian_distance(FC.clusters[-1][k],
-                                                   FC.clusters[-2][k]
-                                                   )
-                                for k in range(FC.n_clusters)
-                                ]
-                               )
+            stopiter = FC.obj_function[-2] - FC.obj_function[-1]
             n_loops += 1
         FC_list[n] = FC
+        # Print computation advancement (replace display line).
+        print('\r',
+              ''.join(['p={}, k={} - ['.format(round(p, 2), nc),
+                       '=' * (int((n+1)/5)), ' ' * (20-int((n+1)/5)),
+                       '] {}%'.format(n+1)
+                       ]
+                      ),
+              end=''
+              )
+    print()  # New print line.
     return FC_list
 
 
@@ -490,7 +484,7 @@ def compare_quality(lst, q_method=None):
             for elt in lst:
                 q_method(elt)
 
-    if isinstance(lst[0].cluster_quality, np.float):  # Objective function.
+    if isinstance(lst[0].cluster_quality, float):  # Objective function.
         quality = [elt.cluster_quality for elt in lst]
     elif len(lst[0].cluster_quality) == 3:  # Uses the VIdso index.
         disp = [elt.cluster_quality[0] for elt in lst]
@@ -507,8 +501,7 @@ def compare_quality(lst, q_method=None):
 
 
 def full_process(dataset, fuzz_range, step, nc_max, algo,
-                 itermax, err, err_bis=None, seed=None, q_method=None,
-                 verbose=0
+                 itermax, err, rng=random.Random(), q_method=None
                  ):
     """
     Runs the full classification procedure. Runs the fuzzy c-means
@@ -537,21 +530,13 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
     err (float)
         Minimum improvement of objective function to continue the
         iterations.
-    err_bis (float)
-        Minimum difference in cluster centroid position to continue
-        the iteration.
-        Default is None. If given, overrides err.
-    seed (integer, float, byte, or bytearray)
-        Seed of the random number generator used to initiate random
+    rng (random.Random instance)
+        Random number generator used to initiate the fuzzy clusters.
         clusters.
     q_method (class method):
         Method for the evaluation of clustering quality. FC.VIdso() or
         FC.intrainter_silhouette().
         Default is None and use the value of the objective function.
-    verbose (int):
-        Amount of verbal information to display. 0 displays no info.
-        1 (default) prints a message when a (fuzzifier, n_cluster) loop is
-        done. 2 additionally prints successive objective function values.
 
     Returns
     -------
@@ -568,23 +553,16 @@ def full_process(dataset, fuzz_range, step, nc_max, algo,
     if cd1 or cd2:
         raise ValueError('Fuzzifier out of range')
     clustering_solution = {}
-    if err_bis:
-        err = err_bis
-    for p in np.arange(fuzz_range[1], fuzz_range[0], -step):
-        clustering_solution[round(p, 2)] = {}
+    for pp in np.arange(fuzz_range[1], fuzz_range[0], -step):
+        p = round(pp, 2)
+        clustering_solution[p] = {}
         for k in range(2, nc_max+1):
             # Make 100 runs of the algorithm.
             results = classification(dataset, p, k, algo,
-                                     itermax, err, err_bis, seed, verbose
-                                     )
+                                     itermax, err, rng)
             # Compare quality and keep best clustering solution.
             q, idx = compare_quality(results, q_method)
-            clustering_solution[round(p, 2)][k] = results[idx[0]]
-            if verbose:
-                print('Fuzzifier {} and {} clusters: done'.format(round(p, 2),
-                                                                  k
-                                                                  )
-                      )
+            clustering_solution[p][k] = results[idx[0]]
     return clustering_solution
 
 

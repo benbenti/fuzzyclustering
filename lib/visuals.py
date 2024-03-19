@@ -40,8 +40,10 @@ triangular_gradation_plot
 partition_comparison
 PCA_plot
 tSNE_plot
+cluster_update_plot
 """
 
+import umap
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
@@ -52,6 +54,15 @@ from sklearn.decomposition import PCA
 from collections import Counter
 import pylotwhale.utils.plotTools as pT
 
+colour_set = np.array(["#000000", "#009292", "#004949", "#ff6db6",
+                       "#ffb6db", "#490092", "#b66dff", "#006ddb",
+                       "#6db6ff", "#b6dbff", "#920000", "#924900",
+                       "#db6d00", "#24ff24", "#ffff6d"
+                       ]
+                      )
+
+plt.rcParams['lines.markersize'] = 10
+plt.rcParams['lines.linewidth'] = 2.5
 
 def distance_check(FC, colours=['k', 'b'], YLIM=None,
                    fileName=None, res=150
@@ -278,8 +289,8 @@ def typicality(FC):
     return typicality
 
 
-def plot_typicality(FC, grouping=None, colour_set=None,
-                    fig=None, ax=None, show_plot=False, fileName=None, res=150
+def plot_typicality(FC, grouping=None,
+                    fig=None, ax=None, plot=False, fileName=None, res=150
                     ):
     """
     Plots a stacked histogram of typicality values, coloured by main
@@ -293,16 +304,13 @@ def plot_typicality(FC, grouping=None, colour_set=None,
         The grouping categories used to colour the samples in the
         histogram. Default is None and colour the samples by fuzzy
         cluster with the highest membership score.
-    colour_set (list)
-        The list of colours to use in the histogram. Default is None
-        and uses a default set of 13 colourblind-suitable colours.
     fig(figure)
         Existing figure object to draw the plot, Default, is None and creates
         a new figure
     ax(Axes)
         Existing Axes object to draw the plot. Default is None and creates a
         new plot.
-    show_plot (boolean)
+    plot (boolean)
         Whether to display the figure or not. Default is False and does not
         display the histogram.*
     fileName (path)
@@ -327,13 +335,6 @@ def plot_typicality(FC, grouping=None, colour_set=None,
                 ]
                for group in set(grouping)
                ]
-    if colour_set is None:
-        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
-                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
-                               "#6db6ff", "#b6dbff", "#920000", "#924900",
-                               "#db6d00", "#24ff24", "#ffff6d"
-                               ]
-                              )
     if not fig and not ax:
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
@@ -343,7 +344,7 @@ def plot_typicality(FC, grouping=None, colour_set=None,
     plt.xlim(0, 1)
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if show_plot:
+    if plot:
         plt.show()
 
     return
@@ -351,7 +352,7 @@ def plot_typicality(FC, grouping=None, colour_set=None,
 
 def triangular_gradation_plots(FC, c1, c2,
                                restrict=False, cols=['b', 'k'],
-                               fig=None, ax=None, show_plot=True, lgd=True,
+                               fig=None, ax=None, plot=True, lgd=True,
                                fileName=None, res=150):
     """
     Makes a triangular plot with the membership scores to a first
@@ -378,7 +379,7 @@ def triangular_gradation_plots(FC, c1, c2,
     ax(Axes)
         Existing Axes object to draw the plot. Default is None and creates a
         new plot.
-    show_plot (boolean)
+    plot (boolean)
         Whether to show the plot or not. Default is True and shows the plot.
     lgd (bool)
         Whether to label the axes on the plot.
@@ -445,7 +446,7 @@ def triangular_gradation_plots(FC, c1, c2,
         plt.title('Gradation between clusters {} and {}'.format(c1, c2))
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if show_plot:
+    if plot:
         plt.show()
 #    else:
 #        plt.close()
@@ -510,8 +511,8 @@ def partition_comparison(FC, partition, fileName=None, res=150):
     return corr_matrix
 
 
-def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
-             fig=None, ax=None, fileName=None, show_plot=False, res=150
+def PCA_plot(FC, grouping=None, n_std=1,
+             fig=None, ax=None, fileName=None, plot=False, res=150
              ):
     """
     Plots the dataset using the first two dimensions of a PCA. Adds a
@@ -523,16 +524,13 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
         Contains the dataset and the fuzzy partition of the data.
     grouping (list):
         The grouping categories to plot the confidence ellipses.
-        Default is None and uses the fuzzy clusters.
+        Default is None and uses the fuzzy clusters. Use numeric
+        values for grouping categories!
     n_std (integer):
         The number of standard deviations to use in the ellipses.
         1 corresponds roughly to a 68% confidence interval.
         2 corresponds roughly to a 95% confidence interval.
         3 corresponds roughly to a 99.7% confidence interval.
-    colour_set (list):
-        The colours used to represent the different categories in the
-        dataset and their confidence ellipse. Default is None and uses
-        a predefined colourblind-friendly set of 15 colours.
     fig (figure)
         An existing figure object to draw the plot. Default is None and creates
         a new figure.
@@ -542,7 +540,7 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     fileName (path):
         Location to save the figure. Default is None and does not save
         the figure.
-    show_plot (boolean):
+    plot (boolean):
         Whether to show the plot or not. Default is False and does not plot the
         figure.
     keep_axes (boolean):
@@ -562,23 +560,23 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
     interval do not account for covariance.
     A larger number of outliers should be expected.
     """
-    if colour_set is None:  # Default colour palette.
-        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
-                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
-                               "#6db6ff", "#b6dbff", "#920000", "#924900",
-                               "#db6d00", "#24ff24", "#ffff6d"
-                               ]
-                              )
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
+        lst_grp = [i for i in range(FC.n_clusters)]
+        plot_clusters = True
+    else:
+        lst_grp = sorted(list(set(grouping)))
+        plot_clusters = False
     # Run the PCA and compute the two first principal components.
     pca = PCA(n_components=2, svd_solver='full')
     princ_comp = pca.fit_transform(FC.data)
+    if plot_clusters:
+        ct_trans = pca.transform(FC.clusters[-1])
     # Make the plot.
     if not fig and not ax:
         fig = plt.figure()
         ax = fig.add_subplot(1, 1, 1)
-    for i, grp in enumerate(sorted(list(set(grouping)))):
+    for i, grp in enumerate(lst_grp):
         idx = [j for j, elt in enumerate(grouping) if elt == grp]
         x = princ_comp[idx, 0]
         y = princ_comp[idx, 1]
@@ -608,9 +606,13 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
                 .translate(np.mean(x), np.mean(y))
             ellipse.set_transform(transf + ax.transData)
             ax.add_patch(ellipse)
-    plt.legend(ax.patches, sorted(list(set(grouping))),
-               bbox_to_anchor=(1.05, 1), loc='upper left'
-               )
+    if plot_clusters:
+        for ind, clust in enumerate(ct_trans):
+            ax.plot(clust[0], clust[1], 'x',
+                   markersize=10, markeredgewidth=3,
+                   c=colour_set[ind], label='_nolabel_'
+                   )
+    plt.legend(ax.patches, sorted(list(set(grouping))), loc='best')
     ax.set_xlabel('1st principal component - {}% of variance'.format(
                   int(100*pca.explained_variance_ratio_[0]))
                   )
@@ -619,7 +621,7 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
                   )
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if show_plot:
+    if plot:
         plt.show()
     else:
         plt.close()
@@ -628,8 +630,9 @@ def PCA_plot(FC, grouping=None, n_std=1, colour_set=None,
 
 def tSNE_plot(FC, p, n, rs=None, ellipse=False,
               n_cp=None,
-              grouping=None, colour_set=None,
-              fileName=None, res=150
+              grouping=None,
+              fileName=None, res=150,
+              plot=False
               ):
     """
     Plots the dataset in 2D using the t-SNE algorithm. Colours data
@@ -660,10 +663,6 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
         -1 keeps all components.
     grouping (list):
         The grouping categories to colour the data points.
-    colour_set (list):
-        The colours used to represent the different categories in the
-        dataset and their confidence ellipse. Default is None and uses
-        a predefined colourblind-friendly set of 15 colours.
     fileName (path):
         Location to save the figure. Default is None and does not save
         the figure.
@@ -679,13 +678,6 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
     It may be necessary to use several values of perplexity to have a
     complete view of the dataset.
     """
-    if colour_set is None:
-        colour_set = np.array(["#000000", "#004949", "#009292", "#ff6db6",
-                               "#ffb6db", "#490092", "#006ddb", "#b66dff",
-                               "#6db6ff", "#b6dbff", "#920000", "#924900",
-                               "#db6d00", "#24ff24", "#ffff6d"
-                               ]
-                              )
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
     if n_cp is None:  # No data transformation.
@@ -701,7 +693,7 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
         y = plot_data[grouping == grp, 1]
         if len(x) > 0:
             ax.scatter(x, y, c=colour_set[i], marker='+')
-        if len(x) > 2:  # Draw confidence ellipse.
+        if ellipse and len(x) > 2:  # Draw confidence ellipse.
             cov = np.cov(x, y)
             pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
             # Get the ellipse radius.
@@ -731,7 +723,127 @@ def tSNE_plot(FC, p, n, rs=None, ellipse=False,
                )
     if fileName is not None:
         plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    # plt.show()
-    plt.close('all')
+    if plot:
+        plt.show()
+    else:
+        plt.close('all')
 
+    return
+
+
+def UMAP_plot(FC, n_neighbors=75, min_dist=0.75,
+              grouping=None,
+              fig=None, ax=None, plot=True, fileName=None, res=150):
+    """
+    Runs the UMAP algorithm to represent the dataset in a 2D plot.
+    The UMAP projection conserves the similarity between datapoints, which
+    means that the closer two samples are in the UMAP plot, the more similar
+    they are.
+
+    Arguments:
+    ----------
+    FC (FuzzyClustering instance):
+        Contains the dataset and the fuzzy partition of the data.
+    grouping (list):
+        The grouping categories to plot the confidence ellipses.
+        Default is None and uses the fuzzy clusters. Use numeric
+        values for grouping categories!
+    fig (figure)
+        An existing figure object to draw the plot. Default is None and creates
+        a new figure.
+    ax (Axes)
+        An existing Axes object to draw the plot. Default is None and creates a
+        new Axes object.
+    fileName (path):
+        Location to save the figure. Default is None and does not save
+        the figure.
+    plot (boolean):
+        Whether to show the plot or not. Default is False and does not plot the
+        figure.
+    res (integer)
+        Resolution (in dpi) of the saved figure. Default is 150.
+    """
+    if grouping is None:  # Uses the fuzzy clusters.
+        grouping = np.argmax(FC.memberships, axis=1)
+        lst_grp = [i for i in range(FC.n_clusters)]
+    else:
+        lst_grp = sorted(list(set(grouping)))
+    # Run the UMAP and compute the 2D projection.
+    reducer = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist)
+    proj = reducer.fit_transform(FC.data)
+    # Make the plot.
+    if not fig and not ax:
+        fig = plt.figure()
+        ax = fig.add_subplot(1, 1, 1)
+    for i, grp in enumerate(lst_grp):
+        idx = [j for j, elt in enumerate(grouping) if elt == grp]
+        x = proj[idx, 0]
+        y = proj[idx, 1]
+        if len(x) > 0:  # Make scatter plot.
+            ax.scatter(x, y, c=colour_set[i], marker='o', label=grp)
+    ax.set_xlabel('1st UMAP dimension')
+    ax.set_ylabel('2nd UMAP dimension')
+    plt.legend(loc='best')
+    if fileName is not None:
+        plt.savefig(fileName, dpi=res, bbox_inches='tight')
+    if plot:
+        plt.show()
+    else:
+        plt.close()
+    return
+
+
+def cluster_update_plot(FC, start=None, stop=None, fig=None, ax=None):
+    """Makes a PCA plot which shows cluster updates.
+
+    Arguments
+    ---------
+    FC (FuzzyClustering instance)
+    start (int):
+        which loop number to start the plot with. Solves cluster fusion issues.
+    stop (int)
+        which loop number to end the plot with. Solves cluster fusion issues.
+    fig, ax (matplotlib.pyplot.Figure and Axes instances):
+        existing figure to plot in.
+
+    Returns
+    -------
+    A plot with the successive position of the fuzzy clusters
+    """
+
+    # Run the PCA and compute the two first principal components.
+    pca = PCA(n_components=2, svd_solver='full')
+    princ_comp = pca.fit_transform(FC.data)
+    # Plot samples in grey.
+    if not fig and not ax:
+        fig = plt.figure(figsize=(10, 10))
+        ax = fig.add_subplot(1, 1, 1)
+    x = princ_comp[:, 0]
+    y = princ_comp[:, 1]
+    ax.scatter(x, y, c="#bdbdbd", marker='+', label='_nolabel_')
+    ax.set_xlabel('1st principal component - {}% of variance'.format(
+                  int(100*pca.explained_variance_ratio_[0]))
+                  )
+    ax.set_ylabel('2nd principal component - {}% of variance'.format(
+                  int(100*pca.explained_variance_ratio_[1]))
+                  )
+    # Plot successive cluster positions
+    # Compute cluster positions along principal components.
+    pos = []
+    for i in FC.clusters:
+        tmp = pca.transform(i)
+        pos.append(tmp)
+    # Remove loops before start and after stop.
+    pos = pos[start:stop]  # Slices from start/until stop if None.
+    # Plot cluster movement with loops.
+    for i in range(FC.n_clusters):
+        x = [k[i, 0] for k in pos]
+        y = [k[i, 1] for k in pos]
+        if len(x) > 1:
+            plt.plot(x, y, 'x-', c=colour_set[i])
+        # Highlight last cluster position.
+        plt.plot(x[-1], y[-1], 'x', c=colour_set[i],
+                 markersize=10, markeredgewidth=2.5
+                 )
+    plt.show()
     return
