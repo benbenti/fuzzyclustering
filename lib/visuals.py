@@ -85,9 +85,9 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
     Returns
     -------
     stable_solutions (2d array)
-        A four column array containing the fuzzifer values (1st col),
-        the fuzziness value (2nd col), the inital and final number of clusters
-        (3rd and 4th cols).
+        A four column array containing the fuzziness values (1st col),
+        the inital and final number of clusters (2nd and 3rd cols), and
+        the final cluster compactness measure (4th col).
     Plots the number of clusters in the best solution as a function of
     the fuzzifier value (optional).
     """
