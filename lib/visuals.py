@@ -516,7 +516,7 @@ def make_partition_comparison(FC, partition, v=1):
     return c_mat
 
 
-def plot_partition_comparison(c_mat, name_list, v=1,
+def plot_partition_comparison(c_mat, name_list,
                               fig=None, ax=None
                               ):
     """
@@ -529,10 +529,7 @@ def plot_partition_comparison(c_mat, name_list, v=1,
         The correspondence matrix between fuzzy clusters and
         a reference partion of the dataset.
     name_list (list):
-        The list of category names in the reference partition.
-    v (int):
-        The computation method for the comparison table.
-        Changes slightly the figure details.
+        The list of category names in the reference partition
     fig (plt.Figure):
     ax (plt.Axes)
     Returns::
@@ -551,18 +548,11 @@ def plot_partition_comparison(c_mat, name_list, v=1,
     ax.imshow(norm_mat, cmap=plt.cm.Blues,
               alpha=0.75, interpolation='nearest'
               )
-    if v == 1:  # Membership scores.
-        for i in range(len(c_mat)):
-            for j in range(len(name_list)):
-                ax.text(x=j, y=i, s=round(c_mat[i, j], 2),
-                        va='center', ha='center'
-                        )
-    else:  # Counts
-        for i in range(len(c_mat)):
-            for j in range(len(name_list)):
-                ax.text(x=j, y=i, s=round(c_mat[i, j]),
-                        va='center', ha='center'
-                        )
+    for i in range(len(c_mat)):
+        for j in range(len(name_list)):
+            ax.text(x=j, y=i, s=round(c_mat[i, j], 1),
+                    va='center', ha='center'
+                    )
     ax.set_xticks(range(len(name_list)))
     ax.set_xticklabels(name_list, rotation=90)
     ax.set_yticks(range(len(c_mat)))
