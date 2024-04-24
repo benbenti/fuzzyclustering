@@ -2,9 +2,6 @@
 This module implements tools to visualise and analyse the results of a
 fuzzy c-means (FCM) classification.
 -----------------------------------------------------------------------
-The distance checking tool checks the distances between cluster
-centroids against the distances between data points to verify how
-cluster centroids are distributed across the feature space.
 The FCM classification is run for a wide range of fuzzifier values and
 number of clusters. The first step of the analysis of FCM results is to
 identify interesting clustering solutions. Clustering solutions which
@@ -27,11 +24,9 @@ the highest membership score and displaying a correspondance matrix.
 Finally, this module can represent high-dimensional datasets in a 2D
 space, using either a PCA or t-SNE approach, to visualise the
 distribution of fuzzy clusters and samples in the feature space.
-
 -----------------------------------------------------------------------
 FUNCTIONS
 ---------
-distance_check
 identify_stable_solutions
 harmonise_cluster_order
 typicality
@@ -47,12 +42,11 @@ import umap
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Ellipse
+from itertools import combinations
 import matplotlib.transforms as transforms
 import lib.algorithms as al
-from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 from collections import Counter
-import pylotwhale.utils.plotTools as pT
 
 colour_set = np.array(["#000000", "#009292", "#004949", "#ff6db6",
                        "#ffb6db", "#490092", "#b66dff", "#006ddb",
@@ -63,62 +57,6 @@ colour_set = np.array(["#000000", "#009292", "#004949", "#ff6db6",
 
 plt.rcParams['lines.markersize'] = 10
 plt.rcParams['lines.linewidth'] = 2.5
-
-def distance_check(FC, colours=['k', 'b'], YLIM=None,
-                   fileName=None, res=150
-                   ):
-    """
-    Plots an histogram to compare the pairwise distances between data
-    points and the pairwise distances between cluster centroids.
-
-    Parameters
-    ----------
-    FC (FuzzyClustering instance)
-        Fuzzy clustering results.
-    colours (2-element list)
-        Colours to use for distances between data points (1st element)
-        and cluster centroids (2nd element). Default is black and blue.
-    YLIM (float)
-        Maximum value to display on the y-axis. Allows zooming in if
-        the number of clusters is much smaller than the number of
-        datapoints. Default is None and does not zoom in.
-    fileName (path)
-    The location where to save the figure. Default is None and does
-        not save the figure.
-    res (integer)
-        Resolution (in dpi) to use when saving the figure.
-        Default is 150.
-
-    Returns
-    -------
-    An histogram of the pairwise distances between data points (in
-    colours[0]) and pairwise distances between cluster centroids (in
-    colours[1]).
-    """
-
-    dist_data = np.array([[al.euclidian_distance(i, j)
-                           for i in FC.data
-                           ]
-                          for j in FC.data
-                          ]
-                         )
-    dist_clusters = np.array([[al.euclidian_distance(c1, c2)
-                               for c1 in FC.clusters[-1]
-                               ]
-                              for c2 in FC.clusters[-1]
-                              ]
-                             )
-    plt.hist((dist_data.flat, dist_clusters.flat), histtype='bar',
-             color=colours, label=('data points', 'cluster centroids')
-             )
-    plt.xlabel('Euclidian distances')
-    plt.ylabel('Number of occurrences')
-    plt.legend('data points', 'clusters')
-    if YLIM is not None:
-        plt.ylim(0, YLIM)
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
 
 
 def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
@@ -147,9 +85,9 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
     Returns
     -------
     stable_solutions (2d array)
-        A three column array containing the fuzzifer values (1st col),
-        the optimal number of clusters (2nd col) and the quality index
-        of the optimal solution (3rd col).
+        A four column array containing the fuzzifer values (1st col),
+        the fuzziness value (2nd col), the inital and final number of clusters
+        (3rd and 4th cols).
     Plots the number of clusters in the best solution as a function of
     the fuzzifier value (optional).
     """
@@ -169,22 +107,25 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
                                quality[idx[0]]
                                ]
 
-    # Plot the optimal number of clusters relative to the fuzzifier value.
-    fig, ax = plt.subplots(figsize=(8, 8))
-    plt.plot(stable_solutions[:, 0], stable_solutions[:, 2], 'kx')
-    plt.xlabel('Fuzzifier value')
-    plt.ylabel('Optimal number of clusters')
-    plt.ylim(0, max(stable_solutions[:, 2] + 1))
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
-    else:
-        plt.close()
+    if plot or fileName:
+        # Plot the optimal number of clusters relative to the fuzzifier value.
+        fig = plt.figure()
+        ax = fig.add_subplot()
+        ax.plot(stable_solutions[:, 0], stable_solutions[:, 2], 'kx')
+        ax.xlabel('Fuzzifier value')
+        ax.ylabel('Optimal number of clusters')
+        ax.ylim(0, max(stable_solutions[:, 2] + 1))
+        if fileName is not None:
+            plt.savefig(fileName, dpi=res, bbox_inches='tight')
+        if plot:
+            plt.show()
+        else:
+            plt.close()
+
     return stable_solutions
 
 
-def harmonise_cluster_order(FC, nclust):
+def harmonise_cluster_order(dict_FC, nclust):
     """
     A fuzzy clustering solution is a set of similar dataset partitions.
     The number of clusters is the same for all partitions, and we expect to
@@ -200,28 +141,29 @@ def harmonise_cluster_order(FC, nclust):
     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     Arguments
     ---------
-    fc (FuzzyClustering instance)
-        The fuzzy partition to harmonise.
+    dict_FC (dict)
+        The results of a fuzzy c-means classification arranged in a
+        dictionary. See module algorithms for details.
     nclust (integer)
         The number of clusters in the solution to harmonise.
 
     Results
     -------
-    No output, the FuzzyClustering instance is updated.
+    No output, the FuzzyClustering instances are updated.
     """
 
     # Get fuzziness values and initial number of clusters for all realisations
     # of the clustering solution of interest
-    sol = identify_stable_solutions(FC)
+    sol = identify_stable_solutions(dict_FC)
     pk = [tuple([i[0], i[1]]) for i in sol if i[2] == nclust]
 
     # Get main cluster (highest membership score) for all realisations
-    keys1 = list(FC.keys())
-    keys2 = list(FC[keys1[0]].keys())
-    nsamples = FC[keys1[0]][keys2[0]].n_samples
+    keys1 = list(dict_FC.keys())
+    keys2 = list(dict_FC[keys1[0]].keys())
+    nsamples = dict_FC[keys1[0]][keys2[0]].n_samples
     mc = np.zeros(shape=(nsamples, len(pk)), dtype=float)
     for (i, (p, k)) in enumerate(pk):
-        typ = typicality(FC[p][k])
+        typ = typicality(dict_FC[p][k])
         mc[:, i] = typ[:, 1]
 
     # Cluster harmonisation :
@@ -242,19 +184,19 @@ def harmonise_cluster_order(FC, nclust):
     flag = False
     for lst in order:
         s = set(lst)
-        if len(s) != len(lst):  # cluster duplication!
+        if len(s) != len(lst):  # cluster duplication or omission!
             flag = True
 
     if not flag:
         for (i, (p, k)) in enumerate(pk):
             # Change cluster order.
-            ct = FC[p][k].clusters[-1]  # load final cluster coordinates.
+            ct = dict_FC[p][k].clusters[-1]  # load final cluster coordinates.
             tmp = np.array(ct[order[i], :])  # reorder clusters.
-            FC[p][k].clusters.append(tmp)
-            # Update column order in membership score table
-            mb = FC[p][k].memberships
+            dict_FC[p][k].clusters.append(tmp)
+            # Update membership scores
+            mb = dict_FC[p][k].memberships
             tmp = np.array(mb[:, order[i]])
-            FC[p][k].memberships = tmp
+            dict_FC[p][k].memberships = tmp
 
     return
 
@@ -289,11 +231,11 @@ def typicality(FC):
     return typicality
 
 
-def plot_typicality(FC, grouping=None,
-                    fig=None, ax=None, plot=False, fileName=None, res=150
+def plot_typicality(FC, grouping=None, plot_type='bar',
+                    fig=None, ax=None
                     ):
     """
-    Plots a stacked histogram of typicality values, coloured by main
+    Plots an histogram of typicality values, coloured by main
     cluster or by another provided partition.
 
     Arguments
@@ -304,25 +246,22 @@ def plot_typicality(FC, grouping=None,
         The grouping categories used to colour the samples in the
         histogram. Default is None and colour the samples by fuzzy
         cluster with the highest membership score.
-    fig(figure)
-        Existing figure object to draw the plot, Default, is None and creates
-        a new figure
-    ax(Axes)
+    plot_type (str):
+        The type of histogram to plot. Default is 'bar' and displays the
+        fuzzy clusters side by side. Other options are 'barstacked',
+        'step' and 'stepfilled'. See plt.hist for details.
+    fig (figure)
+        Existing figure object to draw the plot, Default, is None and creates a
+        new figure.
+    ax (Axes)
         Existing Axes object to draw the plot. Default is None and creates a
         new plot.
-    plot (boolean)
-        Whether to display the figure or not. Default is False and does not
-        display the histogram.*
-    fileName (path)
-        Location to save the figure. Default is None and does not save
-        the figure.
-    res (integer)
-        Resolution (in dpi) of the save figure. Default is 150 dpi.
 
     Returns
     -------
-    An histogram of typicality values. The samples are coloured by
-    category and categories are stacked.
+    fig (plt.Figure instance)
+    ax (plt.Axes instance):
+        An histogram of typicality values with samples coloured by category.
     """
 
     typ = typicality(FC)
@@ -337,23 +276,22 @@ def plot_typicality(FC, grouping=None,
                ]
     if not fig and not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
-    plt.hist(typ_lst, bins=20, histtype='barstacked',
-             color=colour_set[0:len(set(grouping))]
-             )
-    plt.xlim(0, 1)
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
+        ax = fig.add_subplot()
+    ax.hist(typ_lst,
+            bins=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+            histtype=plot_type,
+            color=colour_set[0:len(set(grouping))]
+            )
+    ax.xlim(0, 1)
+    plt.close()
 
-    return
+    return fig, ax
 
 
-def triangular_gradation_plots(FC, c1, c2,
-                               restrict=False, cols=['b', 'k'],
-                               fig=None, ax=None, plot=True, lgd=True,
-                               fileName=None, res=150):
+def triangular_gradation_plot(FC, c1, c2,
+                              restrict=False, cols=['b', 'k'],
+                              fig=None, ax=None, lgd=True
+                              ):
     """
     Makes a triangular plot with the membership scores to a first
     cluster on the x-axis and the membership to a second cluster on the
@@ -373,27 +311,21 @@ def triangular_gradation_plots(FC, c1, c2,
     cols (list)
         2-item list containing colours to use to mark main cluster on graph.
         Default uses blue and black.
-    fig(figure)
+    fig (plt.Figure)
         Existing figure object to draw the plot, Default, is None and creates
         a new figure
-    ax(Axes)
+    ax (plt.Axes)
         Existing Axes object to draw the plot. Default is None and creates a
         new plot.
-    plot (boolean)
-        Whether to show the plot or not. Default is True and shows the plot.
     lgd (bool)
         Whether to label the axes on the plot.
-        Default is True and show the labels
-    fileName (path)
-        Where to save the figure. Default is None and does not save
-        the figure.
-    res (integer)
-        The resolution (in dpi) to use when saving the figure.
-        Default is 150.
+        Default is True and show the label.
 
-     Returns
+    Returns
     -------
-    A triangular gradation plot.
+    fig (plt.Figure)
+    ax (plt.Axes)
+        A triangular gradation plot.
     """
 
     # Get main cluster for colouring.
@@ -420,59 +352,146 @@ def triangular_gradation_plots(FC, c1, c2,
         x_mb_c2 = FC.memberships[c2_ind, c1]
         y_mb_c2 = FC.memberships[c2_ind, c2]
         # Prepare a third colour for remaining samples.
-        others = [not (a or b) for a, b in zip(c1_ind, c2_ind)]
+        others = [(not a and not b) for a, b in zip(c1_ind, c2_ind)]
         x_mb_oth = FC.memberships[others, c1]
         y_mb_oth = FC.memberships[others, c2]
     if not fig and not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        ax = fig.add_subplot()
     # Scatter plots, coloured by main clusters.
     if not restrict:
-        plt.plot(x_mb_oth, y_mb_oth, color="grey", marker='+', linewidth=0)
-    plt.plot(x_mb_c1, y_mb_c1, color=cols[0], marker='+', linewidth=0)
-    plt.plot(x_mb_c2, y_mb_c2, color=cols[1], marker='+', linewidth=0)
+        ax.plot(x_mb_oth, y_mb_oth, color="grey", marker='+', linewidth=0)
+    ax.plot(x_mb_c1, y_mb_c1, color=cols[0], marker='+', linewidth=0)
+    ax.plot(x_mb_c2, y_mb_c2, color=cols[1], marker='+', linewidth=0)
     # Adjust plot zone.
-    plt.xlim(0, 1)
-    plt.ylim(0, 1)
+    ax.xlim(0, 1)
+    ax.ylim(0, 1)
     # Remove plot frame.
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     # Add diagonal lines to the plot.
-    plt.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
-    plt.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
+    ax.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
+    ax.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
     if lgd:
-        plt.xlabel('Membership to cluster {}'.format(c1))
-        plt.ylabel('Membership to cluster {}'.format(c2))
-        plt.title('Gradation between clusters {} and {}'.format(c1, c2))
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
-#    else:
-#        plt.close()
-    return
+        ax.xlabel('Membership to cluster {}'.format(c1))
+        ax.ylabel('Membership to cluster {}'.format(c2))
+    plt.close()
+
+    return fig, ax
 
 
-def partition_comparison(FC, partition, fileName=None, res=150):
+def triangular_gradation_plots(FC, restrict=False,
+                               fig=None, plot=True
+                               ):
+    """
+    Makes a compound figure with triangular gradation plots for every cluster
+    pair.
+
+    Arguments
+    ---------
+    FC (FuzzyClustering instance)
+        The fuzzy partition.
+    restrict (bool)
+        Whether to restrict the triangular plot to samples belonging mostly to
+        the displayed clusters. Default is False.
+    fig(figure)
+        Existing figure object to draw the plot, Default, is None and creates
+        a new figure.
+
+    Returns
+    -------
+    fig (plt.Figure)
+    ax (plt.Axes)
+        A figure with all triangular gradation plots.
+    """
+
+    # Prepare figure for plotting.
+    if not fig:
+        fig = plt.figure(figsize=(10*(FC.n_clusters-1), 10*(FC.n_clusters-1)))
+    # Prepare subplot locations.
+    fig.add_gridspec(FC.n_clusters-1, FC.n_clusters-1)
+
+    # Loop through cluster pairs and build plots.
+    for c1, c2 in combinations(range(FC.n_clusters), 2):
+        ax = plt.subplot2grid((FC.n_clusters-1, FC.n_clusters-1),
+                              (c2-1, c1), fig=fig
+                              )
+        # Get the membership scores to both clusters on plot.
+        # Sort samples by main cluster for colouring.
+        main_cluster = np.argmax(FC.memberships, axis=1)
+        second_cluster = np.argsort(FC.memberships, axis=1)[:, -2]
+        # Identification of samples belonging mainly to c1 and c2.
+        c1_ind = (main_cluster == c1)
+        c2_ind = (main_cluster == c2)
+        if restrict:
+            ind = [i for i, elt in enumerate(zip(main_cluster, second_cluster))
+                   if c1 in elt and c2 in elt
+                   ]
+            # Sort remaining samples by main cluster.
+            c1_ind_r = [i for i in ind if c1_ind[i]]
+            c2_ind_r = [i for i in ind if c2_ind[i]]
+            # Get membership scores to c1 and c2 for both subsets of samples.
+            x_mb_c1 = FC.memberships[c1_ind_r, c1]
+            y_mb_c1 = FC.memberships[c1_ind_r, c2]
+            x_mb_c2 = FC.memberships[c2_ind_r, c1]
+            y_mb_c2 = FC.memberships[c2_ind_r, c2]
+        else:  # Plot all samples.
+            # Get membership score to plot for three subsets of samples:
+            # main cluster c1, main cluster c2, remaining samples.
+            x_mb_c1 = FC.memberships[c1_ind, c1]
+            y_mb_c1 = FC.memberships[c1_ind, c2]
+            x_mb_c2 = FC.memberships[c2_ind, c1]
+            y_mb_c2 = FC.memberships[c2_ind, c2]
+            others = [(not a and not b) for a, b in zip(c1_ind, c2_ind)]
+            x_mb_oth = FC.memberships[others, c1]
+            y_mb_oth = FC.memberships[others, c2]
+        # Make scatter plots coloured by main cluster.
+        if not restrict:  # Plot calls with main cluster != c1 or c2
+            plt.plot(x_mb_oth, y_mb_oth,
+                     color="grey", marker='+', linewidth=0
+                     )
+        plt.plot(x_mb_c1, y_mb_c1,
+                 color=colour_set[c1], marker='+', linewidth=0
+                 )
+        plt.plot(x_mb_c2, y_mb_c2,
+                 color=colour_set[c2], marker='+', linewidth=0
+                 )
+        # Adjust plot zone.
+        plt.xlim(0, 1)
+        plt.ylim(0, 1)
+        # Remove plot frame.
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        # Add diagonal lines to the plot.
+        plt.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
+        plt.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
+        # Add axes labels.
+        if c2 == FC.n_clusters-1:  # Last row of subplots.
+            ax.set_xlabel("Membership to cluster {}".format(c1))
+        if c1 == 0:  # First column of plots.
+            ax.set_ylabel("Membership to cluster {}".format(c2))
+    plt.close()
+
+    return fig, ax
+
+
+def make_partition_comparison(FC, partition, v=1):
     """
     Constructs a matrix of correspondence between the fuzzy partition
-    (as clusters with the highest membership scores) and another crisp
-    partition of the dataset.
+    (as clusters with the highest membership scores) and another partition
+    of the dataset.
 
     Arguments
     ---------
     FC (FuzzyClustering instance)
         The fuzzy partition of the dataset.
     partition (list)
-        The second (crisp) parition of the dataset. A list of the
-        categories to which each sample belongs. Categories should
-        be coded by integer values.
-    fileName (path)
-        Location to save the figure. Default is None and does not
-        save the figure.
-    res (integer)
-        The resolution (in dpi) of the saved figure.
-        Default is 150 dpi.
+        The second parition of the dataset. A list of the
+        categories to which each sample belongs.
+    v (int):
+        The computation method for the correspondence table.
+        Default is 1 and uses raw membership scores. Any alternative
+        uses main cluster for counting.
 
     Returns
     -------
@@ -480,39 +499,88 @@ def partition_comparison(FC, partition, fileName=None, res=150):
         A correspondence matrix between the two partition. Each
         element of the matrix is the count of samples which belong
         to a given pair of fuzzy cluster and partition category.
-    Draws the correspondence matrix.
     """
 
+    # Get fuzzy cluster with highest membership for each sample.
     main_cluster = np.argmax(FC.memberships, axis=1)
-    corr_matrix = np.zeros(shape=(FC.n_clusters, len(set(partition))))
-    for i in range(FC.n_samples):
-        corr_matrix[main_cluster[i], partition[i]] += 1
-        # Adds each sample to the count of the corresponding category.
-    column_sums = np.sum(corr_matrix, axis=0)
-    norm_matrix = corr_matrix / column_sums
-    fig, ax = plt.subplots()
-    ax.imshow(norm_matrix, cmap=plt.cm.Blues, alpha=0.5,
-              interpolation='nearest'
-              )
+    # Make sorted list of categories in the partition.
+    cat_list = sorted(list(set(partition)))
+    # Initialise correspondence matrix.
+    c_mat = np.zeros(shape=(FC.n_clusters, len(cat_list)))
+    for i in range(FC.n_samples):  # Loop over samples.
+        if v == 1:  # Use raw membership scores in c_mat
+            c_mat[:, cat_list.index(partition[i])] += FC.memberships[i]
+        else:  # Use main cluster.
+            c_mat[main_cluster[i], cat_list.index(partition[i])] += 1
+
+    return c_mat
+
+
+def plot_partition_comparison(c_mat, name_list, v=1):
+    """
+    Makes a plot of the correspondence matrix obtained with
+    make_partition_comparison.
+
+    Arguments
+    ---------
+    c_mat (2D numpy array):
+        The correspondence matrix between fuzzy clusters and
+        a reference partion of the dataset.
+    name_list (list):
+        The list of category names in the reference partition.
+    v (int):
+        The computation method for the comparison table.
+        Changes slightly the figure details.
+
+    Returns:
+    --------
+    fig (plt.Figure instance)
+    ax (plt.Axes instance)
+        The figure with the correspondence matrix
+    """
+
+    fig = plt.figure()
+    ax = fig.add_subplot()
+
+    # Version 1: Membership scores in the table
+    if v == 1:
+        col_sums = np.sum(c_mat, axis=0)
+        norm_mat = c_mat / col_sums
+        ax.imshow(norm_mat, cmap=plt.cm.Blues,
+                  alpha=0.75, interpolation='nearest'
+                  )
+        # Display average membership in the image.
+        for i in range(len(c_mat)):
+            for j in range(len(name_list)):
+                ax.text(x=j, y=i, s=round(c_mat[i, j]),
+                        va='center', ha='center'
+                        )
+
+    else:  # Version 2: Main cluster counts in the table.
+        ax.imshow(c_mat, cmap=plt.cm.Blues,
+                  alpha=0.75, interpolation='nearest'
+                  )
+        # Display sample counts in the image.
+        for i in range(len(c_mat)):
+            for j in range(len(name_list)):
+                ax.text(x=j, y=i, s=int(c_mat[i, j]),
+                        va='center', ha='center'
+                        )
     # Tick labels
-    ax.set_xticks(range(len(set(partition))))
-    ax.set_xticklabels(set(partition), rotation=90)
-    ax.set_yticks(range(FC.n_clusters))
-    ax.set_yticklabels(range(FC.n_clusters))
+    ax.set_xticks(range(len(name_list)))
+    ax.set_xticklabels(name_list, rotation=90)
+    ax.set_yticks(range(len(c_mat)))
+    ax.set_yticklabels(range(len(c_mat)))
     # Axis labels
     ax.set_xlabel('Reference partition')
     ax.set_ylabel('Fuzzy clusters')
-    # Display sample counts in the image.
-    pT.display_numbers(fig, ax, corr_matrix, fontSz=8
-                       )
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    plt.show()
-    return corr_matrix
+    plt.close()
+
+    return fig, ax
 
 
 def PCA_plot(FC, grouping=None, n_std=1,
-             fig=None, ax=None, fileName=None, plot=False, res=150
+             fig=None, ax=None
              ):
     """
     Plots the dataset using the first two dimensions of a PCA. Adds a
@@ -537,21 +605,14 @@ def PCA_plot(FC, grouping=None, n_std=1,
     ax (Axes)
         An existing Axes object to draw the plot. Default is None and creates a
         new Axes object.
-    fileName (path):
-        Location to save the figure. Default is None and does not save
-        the figure.
-    plot (boolean):
-        Whether to show the plot or not. Default is False and does not plot the
-        figure.
-    keep_axes (boolean):
-        Whether to return the Axes object of the figure for external use.
-        Default is False and does not return the Axes object.
-    res (integer)
-        Resolution (in dpi) of the saved figure. Default is 150.
 
-    Plots a two-dimensional representation of the data using the first
-    two principal components and confidence ellipses corresponding to
-    each fuzzy cluster (or other input partition).
+    Returns
+    -------
+    fig (plt.Figure)
+    ax (plt.Axes)
+        2D representation of the dataset using the 1st and 2nd principal
+        components and confidence ellipses corresponding to each fuzzy cluster
+        (or other input partition).
 
     Notes:
     ------
@@ -560,6 +621,7 @@ def PCA_plot(FC, grouping=None, n_std=1,
     interval do not account for covariance.
     A larger number of outliers should be expected.
     """
+
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
         lst_grp = [i for i in range(FC.n_clusters)]
@@ -567,15 +629,17 @@ def PCA_plot(FC, grouping=None, n_std=1,
     else:
         lst_grp = sorted(list(set(grouping)))
         plot_clusters = False
+
     # Run the PCA and compute the two first principal components.
     pca = PCA(n_components=2, svd_solver='full')
     princ_comp = pca.fit_transform(FC.data)
     if plot_clusters:
         ct_trans = pca.transform(FC.clusters[-1])
+
     # Make the plot.
     if not fig and not ax:
         fig = plt.figure()
-        ax = fig.add_subplot(1, 1, 1)
+        ax = fig.add_subplot()
     for i, grp in enumerate(lst_grp):
         idx = [j for j, elt in enumerate(grouping) if elt == grp]
         x = princ_comp[idx, 0]
@@ -609,131 +673,24 @@ def PCA_plot(FC, grouping=None, n_std=1,
     if plot_clusters:
         for ind, clust in enumerate(ct_trans):
             ax.plot(clust[0], clust[1], 'x',
-                   markersize=10, markeredgewidth=3,
-                   c=colour_set[ind], label='_nolabel_'
-                   )
-    plt.legend(ax.patches, sorted(list(set(grouping))), loc='best')
+                    markersize=10, markeredgewidth=3,
+                    c=colour_set[ind], label='_nolabel_'
+                    )
+    ax.legend(ax.patches, sorted(list(set(grouping))), loc='best')
     ax.set_xlabel('1st principal component - {}% of variance'.format(
                   int(100*pca.explained_variance_ratio_[0]))
                   )
     ax.set_ylabel('2nd principal component - {}% of variance'.format(
                   int(100*pca.explained_variance_ratio_[1]))
                   )
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
-    else:
-        plt.close()
-    return
+    plt.close()
 
-
-def tSNE_plot(FC, p, n, rs=None, ellipse=False,
-              n_cp=None,
-              grouping=None,
-              fileName=None, res=150,
-              plot=False
-              ):
-    """
-    Plots the dataset in 2D using the t-SNE algorithm. Colours data
-    points according to fuzzy cluster (or other grouping categories).
-
-    Arguments:
-    ----------
-    FC (FuzzyClustering instance):
-        Contains the dataset and the fuzzy partition of the data.
-    p (integer):
-        Perplexity. Number of closest neighbours to use in the t-SNE.
-        Lower values focus on local structure, larger values on overall
-        structure. Usual values in [5, 50].
-        Should not exceed the number of data points.
-    n (integer):
-        Number of iterations to perform for the t-SNE.
-        Usual values in [1000-5000].
-    rs (object):
-        Random state to use for the t-SNE algorithm. Default is None and
-        chooses a random state based on system and current time.
-    ellipse (bool):
-        Whether to draw confidence ellipses for each grouping category.
-        Default if False and does not draw confidence ellipses.
-    n_cp (integer):
-        Number of principal components to keep before performing the
-        t-SNE.
-        Default is None and does not perform the PCA prior to the t-SNE.
-        -1 keeps all components.
-    grouping (list):
-        The grouping categories to colour the data points.
-    fileName (path):
-        Location to save the figure. Default is None and does not save
-        the figure.
-    res (integer)
-        Resolution (in dpi) of the saved figure. Default is 150.
-
-    Plots a two-dimensional representation of the data using the t-SNE
-    algorithm. The data points are coloured according to fuzzy cluster
-    (or another partition).
-
-    Notes:
-    ------
-    It may be necessary to use several values of perplexity to have a
-    complete view of the dataset.
-    """
-    if grouping is None:  # Uses the fuzzy clusters.
-        grouping = np.argmax(FC.memberships, axis=1)
-    if n_cp is None:  # No data transformation.
-        tsne_data = FC.data
-    else:  # PCA transformation.
-        pca = PCA(n_components=n_cp, svd_solver='full')
-        tsne_data = pca.fit_transform(FC.data)
-    tsne = TSNE(perplexity=p, n_iter=n, random_state=rs, method='exact')
-    plot_data = tsne.fit_transform(tsne_data)
-    fig, ax = plt.subplots(figsize=(8, 8))
-    for i, grp in enumerate(sorted(list(set(grouping)))):
-        x = plot_data[grouping == grp, 0]
-        y = plot_data[grouping == grp, 1]
-        if len(x) > 0:
-            ax.scatter(x, y, c=colour_set[i], marker='+')
-        if ellipse and len(x) > 2:  # Draw confidence ellipse.
-            cov = np.cov(x, y)
-            pearson = cov[0, 1]/np.sqrt(cov[0, 0] * cov[1, 1])
-            # Get the ellipse radius.
-            radius_x = np.sqrt(1 + pearson)
-            radius_y = np.sqrt(1 - pearson)
-            ellipse = Ellipse((0, 0),
-                              width=radius_x * 2,
-                              height=radius_y * 2,
-                              facecolor=colour_set[i],
-                              alpha=0.3,
-                              edgecolor=colour_set[i],
-                              linewidth=2
-                              )
-            # Scale to 1 standard deviations and center on the means.
-            scale_x = np.sqrt(cov[0, 0]) * 1
-            scale_y = np.sqrt(cov[1, 1]) * 1
-            # Rotate and scale the ellipse.
-            transf = transforms.Affine2D() \
-                               .rotate_deg(45) \
-                               .scale(scale_x, scale_y) \
-                               .translate(np.mean(x), np.mean(y))
-            ellipse.set_transform(transf + ax.transData)
-            ax.add_patch(ellipse)
-    plt.legend(sorted(list(set(grouping))),
-               bbox_to_anchor=(1.05, 1),
-               loc='upper left'
-               )
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
-    else:
-        plt.close('all')
-
-    return
+    return fig, ax
 
 
 def UMAP_plot(FC, n_neighbors=75, min_dist=0.75,
               grouping=None,
-              fig=None, ax=None, plot=True, fileName=None, res=150):
+              fig=None, ax=None):
     """
     Runs the UMAP algorithm to represent the dataset in a 2D plot.
     The UMAP projection conserves the similarity between datapoints, which
@@ -754,14 +711,12 @@ def UMAP_plot(FC, n_neighbors=75, min_dist=0.75,
     ax (Axes)
         An existing Axes object to draw the plot. Default is None and creates a
         new Axes object.
-    fileName (path):
-        Location to save the figure. Default is None and does not save
-        the figure.
-    plot (boolean):
-        Whether to show the plot or not. Default is False and does not plot the
-        figure.
-    res (integer)
-        Resolution (in dpi) of the saved figure. Default is 150.
+
+    Returns
+    -------
+    fig (plt.Figure)
+    ax (plt.Axes)
+        A 2D representation of the dataset based on the UMAP transformation.
     """
     if grouping is None:  # Uses the fuzzy clusters.
         grouping = np.argmax(FC.memberships, axis=1)
@@ -784,17 +739,14 @@ def UMAP_plot(FC, n_neighbors=75, min_dist=0.75,
     ax.set_xlabel('1st UMAP dimension')
     ax.set_ylabel('2nd UMAP dimension')
     plt.legend(loc='best')
-    if fileName is not None:
-        plt.savefig(fileName, dpi=res, bbox_inches='tight')
-    if plot:
-        plt.show()
-    else:
-        plt.close()
-    return
+    plt.close()
+
+    return fig, ax
 
 
 def cluster_update_plot(FC, start=None, stop=None, fig=None, ax=None):
-    """Makes a PCA plot which shows cluster updates.
+    """
+    Makes a PCA plot which shows successive cluster positions.
 
     Arguments
     ---------
@@ -803,12 +755,13 @@ def cluster_update_plot(FC, start=None, stop=None, fig=None, ax=None):
         which loop number to start the plot with. Solves cluster fusion issues.
     stop (int)
         which loop number to end the plot with. Solves cluster fusion issues.
-    fig, ax (matplotlib.pyplot.Figure and Axes instances):
+    fig, ax (plt.Figure and plt.Axes instances):
         existing figure to plot in.
 
     Returns
     -------
-    A plot with the successive position of the fuzzy clusters
+    fig, ax (plt.Figure and plt.Axes)
+        A plot with the successive position of the fuzzy clusters
     """
 
     # Run the PCA and compute the two first principal components.
@@ -816,8 +769,8 @@ def cluster_update_plot(FC, start=None, stop=None, fig=None, ax=None):
     princ_comp = pca.fit_transform(FC.data)
     # Plot samples in grey.
     if not fig and not ax:
-        fig = plt.figure(figsize=(10, 10))
-        ax = fig.add_subplot(1, 1, 1)
+        fig = plt.figure()
+        ax = fig.add_subplot()
     x = princ_comp[:, 0]
     y = princ_comp[:, 1]
     ax.scatter(x, y, c="#bdbdbd", marker='+', label='_nolabel_')
@@ -840,10 +793,11 @@ def cluster_update_plot(FC, start=None, stop=None, fig=None, ax=None):
         x = [k[i, 0] for k in pos]
         y = [k[i, 1] for k in pos]
         if len(x) > 1:
-            plt.plot(x, y, 'x-', c=colour_set[i])
+            ax.plot(x, y, 'x-', c=colour_set[i])
         # Highlight last cluster position.
-        plt.plot(x[-1], y[-1], 'x', c=colour_set[i],
-                 markersize=10, markeredgewidth=2.5
-                 )
-    plt.show()
-    return
+        ax.plot(x[-1], y[-1], 'x', c=colour_set[i],
+                markersize=10, markeredgewidth=2.5
+                )
+    plt.close()
+
+    return fig, ax

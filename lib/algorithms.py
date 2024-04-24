@@ -313,7 +313,9 @@ class FuzzyClustering():
         # over the dispersion around the center of gravity of the dataset.
         # Cluster centroids with many points concentrated around them have
         # lower values than cluster centroids with few points around.
-        cv_data = np.std(self.data, axis=0) / np.abs(np.mean(self.data, axis=0))
+        cv_data = (np.std(self.data, axis=0) /
+                   np.abs(np.mean(self.data, axis=0))
+                   )
         cv_c = np.zeros(shape=(self.n_clusters, self.data.shape[1]))
         for k in range(self.n_clusters):
             num = np.sum([mb[i, k] * (self.data[i] - ct[k]) ** 2
