@@ -516,7 +516,9 @@ def make_partition_comparison(FC, partition, v=1):
     return c_mat
 
 
-def plot_partition_comparison(c_mat, name_list, v=1):
+def plot_partition_comparison(c_mat, name_list, v=1,
+                              fig=None, ax=None
+                              ):
     """
     Makes a plot of the correspondence matrix obtained with
     make_partition_comparison.
@@ -531,42 +533,36 @@ def plot_partition_comparison(c_mat, name_list, v=1):
     v (int):
         The computation method for the comparison table.
         Changes slightly the figure details.
-
-    Returns:
+    fig (plt.Figure):
+    ax (plt.Axes)
+    Returns::
+        Existing figure to plot in.
     --------
     fig (plt.Figure instance)
     ax (plt.Axes instance)
         The figure with the correspondence matrix
     """
+    if fig is None and ax is None:
+        fig = plt.figure()
+        ax = fig.add_subplot()
 
-    fig = plt.figure()
-    ax = fig.add_subplot()
-
-    # Version 1: Membership scores in the table
-    if v == 1:
-        col_sums = np.sum(c_mat, axis=0)
-        norm_mat = c_mat / col_sums
-        ax.imshow(norm_mat, cmap=plt.cm.Blues,
-                  alpha=0.75, interpolation='nearest'
-                  )
-        # Display average membership in the image.
+    col_sums = np.sum(c_mat, axis=0)
+    norm_mat = c_mat / col_sums
+    ax.imshow(norm_mat, cmap=plt.cm.Blues,
+              alpha=0.75, interpolation='nearest'
+              )
+    if v == 1:  # Membership scores.
+        for i in range(len(c_mat)):
+            for j in range(len(name_list)):
+                ax.text(x=j, y=i, s=round(c_mat[i, j], 2),
+                        va='center', ha='center'
+                        )
+    else:  # Counts
         for i in range(len(c_mat)):
             for j in range(len(name_list)):
                 ax.text(x=j, y=i, s=round(c_mat[i, j]),
                         va='center', ha='center'
                         )
-
-    else:  # Version 2: Main cluster counts in the table.
-        ax.imshow(c_mat, cmap=plt.cm.Blues,
-                  alpha=0.75, interpolation='nearest'
-                  )
-        # Display sample counts in the image.
-        for i in range(len(c_mat)):
-            for j in range(len(name_list)):
-                ax.text(x=j, y=i, s=int(c_mat[i, j]),
-                        va='center', ha='center'
-                        )
-    # Tick labels
     ax.set_xticks(range(len(name_list)))
     ax.set_xticklabels(name_list, rotation=90)
     ax.set_yticks(range(len(c_mat)))
