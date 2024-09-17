@@ -12,7 +12,7 @@ This package aims to propose three methods to assess the quality of the final cl
 
 The visualisation tools include a graphical aid to identify clustering solutions which probably highlight an underlying structure in the dataset, a quantitative measure and display of whether and how much samples are representative of a cluster (the typicality), and triangular plots to visualise the gradation of samples between cluster centroids. Additionally, if another partition of the dataset is available, there is a partition comparison display.
 
-Finally, I implemented two methods for the 2D visualisation of high-dimensional datasets: a first one based on Principal Component Analysis (PCA) which relies on linear projections, and a second one based on the t-SNE algorithm [6] which performs a non-linear transformation of the dataset.
+Finally, I implemented three methods for the 2D visualisation of high-dimensional datasets, based on PCA, t-SNE, and UMAP.
 
 ## Licence
 
@@ -36,7 +36,7 @@ The different versions of the FCM use specific formulas to calculate membership 
 
 ### The classical FCM [1]
 
-**The fuzzifier of the classical FCM range from 1 to +inf**. A fuzzifier of 1 corresponds to a hard classification. The larger the fuzzifier, the more clusters are allowed to overlap.
+**The fuzzifier of the classical FCM range from 1 to +inf (optimal range 1.5-2.5)**. A fuzzifier of 1 corresponds to a hard classification. The larger the fuzzifier, the more clusters are allowed to overlap.
 
 The objective function of the classical FCM is:
 
@@ -74,15 +74,9 @@ With:
 
 **(work in progress)**
 
-### The FCM with membership regularisation [3]
+### The FCM with membership regularisation (using Shannon's entropy and quuadratic entropy) [3]
 
-#### Using Shannon's entropy
-
- **(work in progress)**
-
-#### Using quadratic entropy
-
- **(work in progress)**
+**(work in progress)**
 
 ## How to install/uninstall the package
 
@@ -90,7 +84,7 @@ With:
 
 ## Tutorial
 
- **(work in progress)**
+See our study of long-finned pilot whale calls [6] for an example of how to use the visualisation tools to analyse the classification results.
 
 ## Bibliography
 
@@ -99,4 +93,4 @@ With:
 - [3] **Borgelt C** (2013) Objective functions for fuzzy clustering. In *Computational intelligence and intelligent data analysis, pp 3-16*. DOI:10.1007/978-3-642-32378-2_1
 - [4] **Bharill N, Tiwari A** (2014) Enhanced cluster validity index for the evaluation of optimal number of clusters for fuzzy c-means algorithm. *IEEE international conference on fuzzy systems*. DOI:10.1109/FUZZ-IEEE.2014.6891591
 - [5] **Rawashdeh M, Ralescu A** (2012) Crisp and fuzzy cluster validity: generalised intra-inter silhouette. *Annual meeting of the north American fuzzy information processing society*. DOI:10.1109/NAFIPS.2012.6290969
-- [6] **van der Maaten L, Hinton G** (2008) Visualizing Data using t-SNE. *Journal of Machine Learning Research*.
+- [6] **Benti B, Miller PJO, Vester H, Noriega F, and Curé C** (2024) Unsupervised classification of graded animal sounds using fuzzy clustering. *bioArkiv* 2024.09.13.612808. DOI:10.1101/2024.09.13.612808 
