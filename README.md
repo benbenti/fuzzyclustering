@@ -12,7 +12,7 @@ This package aims to propose three methods to assess the quality of the final cl
 
 The visualisation tools include a graphical aid to identify clustering solutions which probably highlight an underlying structure in the dataset, a quantitative measure and display of whether and how much samples are representative of a cluster (the typicality), and triangular plots to visualise the gradation of samples between cluster centroids. Additionally, if another partition of the dataset is available, there is a partition comparison display.
 
-Finally, I implemented three methods for the 2D visualisation of high-dimensional datasets, based on PCA, t-SNE, and UMAP.
+Finally, I implemented three methods for the 2D visualisation of high-dimensional datasets, based on PCA and UMAP.
 
 ## Licence
 
@@ -70,21 +70,144 @@ With:
 - *p* the fuzzifier;
 - *x_i_* the position of sample *i* in the feature space.
 
-### The FCM with polynomial fuzzifier [3]
+### Alternative FC algorithms he FCM with polynomial fuzzifier [3]
 
-**(work in progress)**
-
-### The FCM with membership regularisation (using Shannon's entropy and quuadratic entropy) [3]
-
-**(work in progress)**
+Several modifications of the FC algorithm exist - using a polynomial fuzzifier, or regulating membership scores with an entropy term (either using Shannon's or quadratic entropy) [3].
+These alternative algorithms are not yet implemented in the package.
 
 ## How to install/uninstall the package
 
- **(work in progress)**
+(no release yet, please make a local clone)
 
 ## Tutorial
 
-See our study of long-finned pilot whale calls [6] for an example of how to use the visualisation tools to analyse the classification results.
+### Extraction of acoustic features
+
+See the documentation of the pylotwhale package for details. Example below.
+
+```
+import pandas as pd
+import numpy as np
+
+import pylotwhale.signalProcessing.signalTools as sT
+import pylotwhale.utils.dataTools as daT
+import pylotwhale.utils.whaleFileProcessing as wP
+import pylotwhale.MLwhales.featureExtraction as fex
+import pylotwhale.MLwhales.MLtools_beta as myML
+
+# Load audio data and annotations
+df = pd.read_csv(callColl, usecols = ['file', 'label'])
+wavColl = np.array(df, dtype=object)
+
+# Build feature extraction pipeline
+## Preprocessing
+fs = 48000
+T_settings = []
+filt = 'band_pass_filter'
+filtDi = {'fs': fs, 'lowcut':1000, 'highcut': 22000, 'order': 4}
+T_settings.append(('bandFilter', (filt, filtDi)))
+prepro = 'maxabs_scale'
+preproDict = {}
+T_settings.append(('normaliseWF', (prepro, preproDict)))
+## Define audio features
+audioF = 'MFCC'
+auD = {}
+auD['fs'] = fs
+auD['NFFT'] = 1024
+auD['overlap'] = 0.5
+auD['n_mels'] = 40
+auD['Nceps'] = 40
+T_settings.append(('Audio_features', (audioF, auD)))
+## Summarisation method.
+summDict = {'Nslices': nslices, 'normalise': True}
+summType = 'splitting'
+T_settings.append(('summ', (summType, summDict)))
+## Make transformation pipeline
+Tpipe = fex.makeTransformationsPipeline(T_settings)
+feExFun = Tpipe.fun
+    
+# Extract raw features from wav files
+datO = myML.dataXy_names()
+datO_new = fex.wavLCollection2datXy(wavColl, featExtFun=feExFun, fs=fs)
+datO.addInstances(datO_new.X, datO_new.y_names)
+```
+
+### Run fuzzy clustering
+
+```
+import lib.algorithms as al
+
+dataset = datO.X
+fuzz_interval = [1, 2.5]  # Interval of fuzziness over which to run the algorithm.
+step = 0.01  # Fuzziness steps
+kmax = 15  # Maximum number of fuzzy clusters.
+algo = al.fuzzyClustering  # which algorithm to use (alternative algorithms in construction)
+maxiter = 1000  # Maximal number of iterations for the FC algorithm
+err = 0.0001  # Minimal improvement of the objective function under which to stop iterating
+
+FC = al.full_process(dataset, fuzz_interval, step, kmax, algo, maxiter, err)
+
+# Possibility to run in parallel with larger steps (for instance five terminals
+# with a step of 0.05 and p_max differing by 0.01)
+# Requires to merge the partial results dictionnaries afterwards
+# full_dict = {**dict1, ..., **dictn}
+```
+
+### Select interesting clustering solution
+
+The first step of the analysis is to select interesting clustering solutions.
+```
+import al.visuals as vis
+
+# Identify clustering solutions of interest.
+tab = vis.identify_stable_solutions(FC, plot=True)
+```
+
+`tab` is a np.array containing the optimal fuzzy clustering outcomes for all values of fuzziness. This function can plot the optimal number of clusters relative to fuzziness values. Clustering solutions that are stable over a large range of fuzziness may represent underlying structures in the dataset and warrant further investigation.
+
+### Visualise the outcome of a single fuzzy clustering run.
+
+The `visuals` module provides tools for the 2D-visualisation of fuzzy clustering results. For both function, samples can be coloured according to the fuzzy cluster they are most similar to, or according to user-provided categories.
+
+```
+# fc is an instance of the FuzzyClustering class storing the results of fuzzy clustering
+
+fig, ax = PCA_plot(fc)  # using Principal Component Analysis
+fig, ax = UMAP_plot(fc)  # using Uniform Manifold Approximation and Projection
+```
+
+Then, it is possible to plot histograms of typicality. Typicality is measured as the difference between the two highest membership scores of a sample and is indicates whether samples are similar to cluster centres (stereotypes samples, typicality close to 1) or not (graded samples, typicality close to 0).
+
+```
+# fc is an instance of the FuzzyClustering class.
+fig, ax = plot_typicality(fc)
+```
+
+Triangular gradation plots are a second, more detailed visualisation of call gradation across fuzzy clusters. They plot the membership scores of samples to two different fuzzy clusters. Stereotyped samples are location around the tips of the triangular plot, whereas graded samples are located in the diagonal and the center of the plot.
+
+```
+# fc is an instance of the FuzzyClustering class.
+# c1 and c2 are two integers pointing to fuzzy cluster indices.
+
+# Plot a single gradation plot for clusters c1 and c2.
+fig, ax = triangular_gradation_plot(fc, c1, c2)
+
+# Plot gradation plots for all pairs of fuzzy clusters.
+fig, ax = triangular_gradation_plots(fc)
+```
+
+Finally, the module provides tools to compare the fuzzy clustering results with another, user-provided classification.
+
+```
+# fc is an instance of the FuzzyClustering class.
+# partition is a user-provided classfication of the samples (np.array, size=(n_samples, 1))
+# name_list is the list of the categories in the user-provided classification.
+
+c_mat = make_partition_comparison(fc, partition)  # confusion matrix crossing both classficiation.
+fig, ax = plot_partition_comparison(c_mat, name_list)
+```
+
+Please refer to our study of long-finned pilot whale calls [6] for an example of how to use the visualisation tools to analyse fuzzy clustering results.
 
 ## Bibliography
 
@@ -93,4 +216,4 @@ See our study of long-finned pilot whale calls [6] for an example of how to use 
 - [3] **Borgelt C** (2013) Objective functions for fuzzy clustering. In *Computational intelligence and intelligent data analysis, pp 3-16*. DOI:10.1007/978-3-642-32378-2_1
 - [4] **Bharill N, Tiwari A** (2014) Enhanced cluster validity index for the evaluation of optimal number of clusters for fuzzy c-means algorithm. *IEEE international conference on fuzzy systems*. DOI:10.1109/FUZZ-IEEE.2014.6891591
 - [5] **Rawashdeh M, Ralescu A** (2012) Crisp and fuzzy cluster validity: generalised intra-inter silhouette. *Annual meeting of the north American fuzzy information processing society*. DOI:10.1109/NAFIPS.2012.6290969
-- [6] **Benti B, Miller PJO, Vester H, Noriega F, and Curé C** (2024) Unsupervised classification of graded animal sounds using fuzzy clustering. *bioArkiv* 2024.09.13.612808. DOI:10.1101/2024.09.13.612808 
+- [6] **Benti B, Miller PJO, Vester H, Noriega F, and Curé C** (2024) Unsupervised classification of graded animal sounds using fuzzy clustering. *bioArkiv* 2024.09.13.612808. DOI:10.1101/2024.09.13.612808
