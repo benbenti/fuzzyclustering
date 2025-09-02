@@ -47,11 +47,11 @@ import matplotlib.transforms as transforms
 import lib.algorithms as al
 from sklearn.decomposition import PCA
 from collections import Counter
+from mpl_toolkits.axes_grid1 import make_axes_locatable, axes_size
 
-colour_set = np.array(["#000000", "#009292", "#004949", "#ff6db6",
-                       "#ffb6db", "#490092", "#b66dff", "#006ddb",
-                       "#6db6ff", "#b6dbff", "#920000", "#924900",
-                       "#db6d00", "#24ff24", "#ffff6d"
+colour_set = np.array(["#000000", "#009292", "#ff6db6", "#490092", "#006ddb",
+                       "#924900", "#004949", "#ffb6db", "#b66dff", "#6db6ff",
+                       "#db6d00"
                        ]
                       )
 
@@ -112,8 +112,8 @@ def identify_stable_solutions(dict_FC, plot=False, fileName=None, res=150):
         fig = plt.figure()
         ax = fig.add_subplot()
         ax.plot(stable_solutions[:, 0], stable_solutions[:, 2], 'kx')
-        ax.xlabel('Fuzzifier value')
-        ax.ylabel('Optimal number of clusters')
+        ax.set_xlabel('Fuzzifier value')
+        ax.set_ylabel('Optimal number of clusters')
         ax.ylim(0, max(stable_solutions[:, 2] + 1))
         if fileName is not None:
             plt.savefig(fileName, dpi=res, bbox_inches='tight')
@@ -231,7 +231,7 @@ def typicality(FC):
     return typicality
 
 
-def plot_typicality(FC, grouping=None, plot_type='bar',
+def plot_typicality(FC, grouping=None, plot_type='bar', proportion=False,
                     fig=None, ax=None
                     ):
     """
@@ -250,6 +250,9 @@ def plot_typicality(FC, grouping=None, plot_type='bar',
         The type of histogram to plot. Default is 'bar' and displays the
         fuzzy clusters side by side. Other options are 'barstacked',
         'step' and 'stepfilled'. See plt.hist for details.
+    proportion (bool):
+        Whether to plot the number of samples (False, default) or the
+        proportion of samples (True) in the histogram.
     fig (figure)
         Existing figure object to draw the plot, Default, is None and creates a
         new figure.
@@ -277,14 +280,22 @@ def plot_typicality(FC, grouping=None, plot_type='bar',
     if not fig and not ax:
         fig = plt.figure()
         ax = fig.add_subplot()
-    ax.hist(typ_lst,
-            bins=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
-            histtype=plot_type,
-            color=colour_set[0:len(set(grouping))]
-            )
-    ax.xlim(0, 1)
+    n, bins, patches = ax.hist(typ_lst,
+                               bins=[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1],
+                               histtype=plot_type,
+                               color=colour_set[0:len(set(grouping))]
+                               )
+    ax.set_xlim(0, 1)
+    
+    if proportion:  # Use proportions instead of numbers in the histograms.
+        for patch in patches:
+            n_tot = sum([bar.get_height() for bar in patch])
+            for artist in patch:
+                artist.set_height(artist.get_height() / n_tot)
+        ax.set_ylim(0, 1)
+    
     plt.close()
-
+    
     return fig, ax
 
 
@@ -364,8 +375,8 @@ def triangular_gradation_plot(FC, c1, c2,
     ax.plot(x_mb_c1, y_mb_c1, color=cols[0], marker='+', linewidth=0)
     ax.plot(x_mb_c2, y_mb_c2, color=cols[1], marker='+', linewidth=0)
     # Adjust plot zone.
-    ax.xlim(0, 1)
-    ax.ylim(0, 1)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
     # Remove plot frame.
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
@@ -373,8 +384,8 @@ def triangular_gradation_plot(FC, c1, c2,
     ax.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
     ax.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
     if lgd:
-        ax.xlabel('Membership to cluster {}'.format(c1))
-        ax.ylabel('Membership to cluster {}'.format(c2))
+        ax.set_xlabel('Membership to cluster {}'.format(c1+1))
+        ax.set_ylabel('Membership to cluster {}'.format(c2+1))
     plt.close()
 
     return fig, ax
@@ -447,29 +458,29 @@ def triangular_gradation_plots(FC, restrict=False,
             y_mb_oth = FC.memberships[others, c2]
         # Make scatter plots coloured by main cluster.
         if not restrict:  # Plot calls with main cluster != c1 or c2
-            plt.plot(x_mb_oth, y_mb_oth,
-                     color="grey", marker='+', linewidth=0
-                     )
-        plt.plot(x_mb_c1, y_mb_c1,
-                 color=colour_set[c1], marker='+', linewidth=0
-                 )
-        plt.plot(x_mb_c2, y_mb_c2,
-                 color=colour_set[c2], marker='+', linewidth=0
-                 )
+            ax.plot(x_mb_oth, y_mb_oth,
+                    color="grey", marker='+', linewidth=0
+                    )
+        ax.plot(x_mb_c1, y_mb_c1,
+                color=colour_set[c1], marker='+', linewidth=0
+                )
+        ax.plot(x_mb_c2, y_mb_c2,
+                color=colour_set[c2], marker='+', linewidth=0
+                )
         # Adjust plot zone.
-        plt.xlim(0, 1)
-        plt.ylim(0, 1)
+        ax.set_xlim(0, 1)
+        ax.set_ylim(0, 1)
         # Remove plot frame.
         ax.spines['top'].set_visible(False)
         ax.spines['right'].set_visible(False)
         # Add diagonal lines to the plot.
-        plt.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
-        plt.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
+        ax.plot([0, 1], [1, 0], 'k-', linewidth=0.75)
+        ax.plot([0, 0.5], [0, 0.5], 'k-', linewidth=0.75)
         # Add axes labels.
         if c2 == FC.n_clusters-1:  # Last row of subplots.
-            ax.set_xlabel("Membership to cluster {}".format(c1))
+            ax.set_xlabel("Membership to cluster {}".format(c1+1))
         if c1 == 0:  # First column of plots.
-            ax.set_ylabel("Membership to cluster {}".format(c2))
+            ax.set_ylabel("Membership to cluster {}".format(c2+1))
     plt.close()
 
     return fig, ax
@@ -540,14 +551,22 @@ def plot_partition_comparison(c_mat, name_list,
         The figure with the correspondence matrix
     """
     if fig is None and ax is None:
-        fig = plt.figure()
+        fig = plt.figure(figsize=([2*i for i in c_mat.shape]))
         ax = fig.add_subplot()
+    
+    # Prepare to add colorbar adjusted to plot size.
+    divider = make_axes_locatable(ax)
+    width = axes_size.AxesY(ax, aspect=1/20)
+    pad = axes_size.Fraction(0.5, width)
 
     col_sums = np.sum(c_mat, axis=0)
     norm_mat = c_mat / col_sums
-    ax.imshow(norm_mat, cmap=plt.cm.Blues,
-              alpha=0.75, interpolation='nearest'
-              )
+    im = ax.imshow(norm_mat, cmap=plt.cm.Blues,
+                   alpha=0.75, interpolation='nearest'
+                   )
+    cax = divider.append_axes('right', size=width, pad=pad)
+    cb = plt.colorbar(im, cax=cax)
+    
     for i in range(len(c_mat)):
         for j in range(len(name_list)):
             ax.text(x=j, y=i, s=round(c_mat[i, j], 1),
@@ -556,7 +575,7 @@ def plot_partition_comparison(c_mat, name_list,
     ax.set_xticks(range(len(name_list)))
     ax.set_xticklabels(name_list, rotation=90)
     ax.set_yticks(range(len(c_mat)))
-    ax.set_yticklabels(range(len(c_mat)))
+    ax.set_yticklabels([i+1 for i in range(len(c_mat))])
     # Axis labels
     ax.set_xlabel('Reference partition')
     ax.set_ylabel('Fuzzy clusters')
